@@ -657,13 +657,41 @@ body {
 /* ---- Sidebar ---- */
 
 .hive-sidebar {
-  width: 232px;
+  position: relative;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   background: var(--hive-color-bg-subtle);
   border-right: 1px solid var(--hive-color-border-subtle);
+}
+
+.hive-sidebar-resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 50;
+}
+.hive-sidebar-resizer:hover {
+  background: var(--hive-color-accent);
+  opacity: 0.4;
+}
+
+.hive-sidebar-toggle {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 1rem;
+  color: var(--hive-color-fg-muted);
+  padding: 2px 4px;
+  border-radius: var(--hive-radius-sm);
+}
+.hive-sidebar-toggle:hover {
+  color: var(--hive-color-accent);
+  background: var(--hive-color-bg-subtle);
 }
 
 .hive-space-name {

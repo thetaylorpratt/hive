@@ -47,6 +47,7 @@ interface AppState {
   sidebarItems: SidebarItem[]; // favorites + active-Space items
   folders: Folder[];
   sidebarVisible: boolean;
+  sidebarWidth: number;
   commandBarOpen: boolean;
   unreadPageIds: Set<string>;
   unreadBySpace: Record<string, number>;
@@ -78,6 +79,7 @@ interface AppState {
   createFolder: () => Promise<void>;
   deleteFolder: (folderId: string) => Promise<void>;
   toggleSidebar: () => void;
+  setSidebarWidth: (width: number) => void;
   setCommandBarOpen: (open: boolean) => void;
   recomputeUnread: () => Promise<void>;
 
@@ -111,6 +113,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   sidebarItems: [],
   folders: [],
   sidebarVisible: true,
+  sidebarWidth: Number(localStorage.getItem("hive-sidebar-width")) || 232,
   commandBarOpen: false,
   unreadPageIds: new Set<string>(),
   unreadBySpace: {},
@@ -373,6 +376,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   toggleSidebar: () => set({ sidebarVisible: !get().sidebarVisible }),
+
+  setSidebarWidth: (width: number) => {
+    const clamped = Math.min(400, Math.max(180, Math.round(width)));
+    localStorage.setItem("hive-sidebar-width", String(clamped));
+    set({ sidebarWidth: clamped });
+  },
   setCommandBarOpen: (open: boolean) => set({ commandBarOpen: open }),
 
   focusBlockId: null,

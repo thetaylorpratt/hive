@@ -51,6 +51,9 @@ export function Header() {
   const setView = useAppStore((s) => s.setView);
   const authReady = useAppStore((s) => s.auth.status === "ready");
 
+  const toggleSidebar = useAppStore((s) => s.toggleSidebar);
+  const sidebarVisible = useAppStore((s) => s.sidebarVisible);
+
   return (
     <header
       className="flex items-center gap-3 px-4 py-2.5"
@@ -59,6 +62,13 @@ export function Header() {
         borderBottom: "1px solid var(--hive-color-border-subtle)",
       }}
     >
+      <button
+        className="hive-sidebar-toggle"
+        title={`${sidebarVisible ? "Hide" : "Show"} sidebar (⌘\\)`}
+        onClick={toggleSidebar}
+      >
+        ◧
+      </button>
       <span className="font-semibold" style={{ letterSpacing: "-0.01em" }}>
         🐝 Hive
       </span>

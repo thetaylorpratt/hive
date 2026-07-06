@@ -74,6 +74,9 @@ function useActions(): Result[] {
     action("New folder", "📁", () => void store.getState().createFolder()),
     action("Toggle sidebar", "◧", () => store.getState().toggleSidebar(), "⌘\\"),
     action("Focus mode", "🎯", () => store.getState().toggleFocusMode(), "⌘⇧F"),
+    action("Theme: light", "☀️", () => void import("../lib/theme").then((m) => m.setThemePref("light"))),
+    action("Theme: dark", "🌙", () => void import("../lib/theme").then((m) => m.setThemePref("dark"))),
+    action("Theme: system", "🖥", () => void import("../lib/theme").then((m) => m.setThemePref("system"))),
     ...spaces.map((space, i) =>
       action(
         `Switch to Space: ${space.name}`,

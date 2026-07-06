@@ -290,8 +290,30 @@ export function Sidebar() {
   );
   const today = sidebarItems.filter((i) => i.tier === "today");
 
+  const sidebarWidth = useAppStore((s) => s.sidebarWidth);
+  const setSidebarWidth = useAppStore((s) => s.setSidebarWidth);
+
+  const startResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = sidebarWidth;
+    const onMove = (ev: MouseEvent) =>
+      setSidebarWidth(startWidth + (ev.clientX - startX));
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
   return (
-    <aside className="hive-sidebar" onWheel={onWheel}>
+    <aside
+      className="hive-sidebar"
+      style={{ width: sidebarWidth }}
+      onWheel={onWheel}
+    >
+      <div className="hive-sidebar-resizer" onMouseDown={startResize} />
       <div
         key={activeSpaceId ?? "none"}
         className={`hive-space-pane ${direction}`}
