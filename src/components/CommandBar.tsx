@@ -73,6 +73,7 @@ function useActions(): Result[] {
     action("New Space", "✨", () => void store.getState().createSpace()),
     action("New folder", "📁", () => void store.getState().createFolder()),
     action("Toggle sidebar", "◧", () => store.getState().toggleSidebar(), "⌘\\"),
+    action("Focus mode", "🎯", () => store.getState().toggleFocusMode(), "⌘⇧F"),
     ...spaces.map((space, i) =>
       action(
         `Switch to Space: ${space.name}`,

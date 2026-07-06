@@ -5,8 +5,9 @@ import { BlockList } from "./components/BlockRenderer";
 import { Sidebar } from "./components/Sidebar";
 import { CommandBar } from "./components/CommandBar";
 import { MruSwitcher } from "./components/MruSwitcher";
+import { Toast } from "./components/Toast";
 import { installKeymap } from "./lib/keymap";
-import { pageEmoji, pageTitle } from "./lib/pageMeta";
+import { blocksToPlainText, pageEmoji, pageTitle } from "./lib/pageMeta";
 
 function Notice({
   tone,
@@ -71,12 +72,18 @@ function Content() {
   const pageError = useAppStore((s) => s.pageError);
   const writeError = useAppStore((s) => s.writeError);
   const canEdit = useAppStore((s) => s.canEdit());
+  const focusMode = useAppStore((s) => s.focusMode);
 
   // A loaded page (including the demo fixture) always wins over auth notices.
   if (page && pageStatus !== "error" && pageStatus !== "loading") {
     const emoji = pageEmoji(page.page);
+    const words = blocksToPlainText(
+      page.blocks as Parameters<typeof blocksToPlainText>[0],
+    )
+      .split(/\s+/)
+      .filter(Boolean).length;
     return (
-      <article className="hive-doc">
+      <article className={`hive-doc${focusMode ? " focus-mode" : ""}`}>
         <h1 className="hive-page-title">
           {emoji && <span style={{ marginRight: "0.35em" }}>{emoji}</span>}
           {pageTitle(page.page)}
@@ -89,6 +96,8 @@ function Content() {
           {new Date(page.fetchedAt).toLocaleString()}
           {pageStatus === "refreshing" && " · refreshing…"}
           {canEdit ? " · editable" : " · read-only until token"}
+          {` · ${words} words`}
+          {focusMode && " · focus"}
           {pageError && (
             <span style={{ color: "var(--hive-color-critical-fg)" }}>
               {" "}
@@ -180,6 +189,7 @@ export default function App() {
       const s = useAppStore.getState();
       if (action === "command-bar") s.setCommandBarOpen(!s.commandBarOpen);
       else if (action === "toggle-sidebar") s.toggleSidebar();
+      else if (action === "focus-mode") s.toggleFocusMode();
       else if (action.startsWith("switch-space-")) {
         void s.switchSpaceByIndex(Number(action.slice("switch-space-".length)));
       }
@@ -197,6 +207,7 @@ export default function App() {
       </div>
       <CommandBar />
       <MruSwitcher />
+      <Toast />
     </div>
   );
 }

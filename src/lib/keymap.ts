@@ -16,6 +16,7 @@ export const DEFAULT_BINDINGS: KeyBinding[] = [
   { combo: "meta+t", action: "command-bar" },
   { combo: "meta+k", action: "command-bar" },
   { combo: "meta+\\", action: "toggle-sidebar" },
+  { combo: "meta+shift+f", action: "focus-mode" },
   ...Array.from({ length: 9 }, (_, i) => ({
     combo: `ctrl+${i + 1}`,
     action: `switch-space-${i + 1}`,
@@ -27,6 +28,8 @@ function comboOf(e: KeyboardEvent): string {
   if (e.metaKey) parts.push("meta");
   if (e.ctrlKey) parts.push("ctrl");
   if (e.altKey) parts.push("alt");
+  // shift only matters for letter keys; symbols like "\" already encode it
+  if (e.shiftKey && /^[a-z]$/i.test(e.key)) parts.push("shift");
   parts.push(e.key.toLowerCase());
   return parts.join("+");
 }

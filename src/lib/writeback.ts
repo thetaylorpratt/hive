@@ -275,6 +275,67 @@ export async function convertBlockType(
   return { blocks: next, remote: remoteId.then(() => undefined), remoteId };
 }
 
+/**
+ * Undo path for block deletion: re-insert the captured block after a sibling
+ * (or at the end when it was first). Local sink restores children too; the
+ * notion sink recreates the block's own content only (children not
+ * re-created — v1 undo, acceptable for text-class blocks).
+ */
+export async function restoreBlock(
+  pageId: string,
+  blocks: HiveBlock[],
+  block: HiveBlock,
+  afterId: string | null,
+  sink: WriteSink,
+): Promise<WriteResult> {
+  const next = afterId
+    ? insertAfterInTree(blocks, afterId, block)
+    : [block, ...blocks];
+  await persist(pageId, next);
+
+  let remote: Promise<void> = Promise.resolve();
+  if (sink === "notion" && EDITABLE_TYPES.has(block.type)) {
+    const payload = block[block.type] as { rich_text?: RichTextItem[] };
+    remote = enqueue(() =>
+      notion().blocks.children.append({
+        block_id: pageId,
+        ...(afterId && !afterId.startsWith("local-") ? { after: afterId } : {}),
+        children: [
+          {
+            [block.type]: {
+              ...(block.type === "to_do"
+                ? { checked: (block.to_do as { checked?: boolean })?.checked ?? false }
+                : {}),
+              rich_text: toApiRichText(payload?.rich_text ?? []),
+            },
+          } as never,
+        ],
+      }),
+    ).then(() => undefined);
+  }
+  return { blocks: next, remote };
+}
+
+/** Locate a block and its previous same-level sibling (for undo). */
+export function findWithPrev(
+  blocks: HiveBlock[],
+  blockId: string,
+): { block: HiveBlock; prevId: string | null } | null {
+  const scan = (list: HiveBlock[]): { block: HiveBlock; prevId: string | null } | null => {
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].id === blockId) {
+        return { block: list[i], prevId: i > 0 ? list[i - 1].id : null };
+      }
+      if (list[i].children) {
+        const found = scan(list[i].children!);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+  return scan(blocks);
+}
+
 export async function deleteBlock(
   pageId: string,
   blocks: HiveBlock[],

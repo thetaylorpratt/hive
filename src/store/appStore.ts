@@ -48,6 +48,8 @@ interface AppState {
   unreadPageIds: Set<string>;
   unreadBySpace: Record<string, number>;
   mru: { pageId: string; title: string; icon: string | null }[];
+  focusMode: boolean;
+  toast: { message: string; undo?: () => Promise<void> } | null;
 
   init: () => Promise<void>;
   openPage: (input: string) => Promise<void>;
@@ -84,6 +86,9 @@ interface AppState {
   convertBlock: (blockId: string, newType: string) => Promise<void>;
   deleteBlock: (blockId: string) => Promise<void>;
   setFocusBlock: (blockId: string | null) => void;
+  toggleFocusMode: () => void;
+  showToast: (message: string, undo?: () => Promise<void>) => void;
+  dismissToast: () => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -103,6 +108,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   unreadPageIds: new Set<string>(),
   unreadBySpace: {},
   mru: [],
+  focusMode: false,
+  toast: null,
 
   init: async () => {
     // Organization plane boots regardless of Notion auth.
@@ -323,8 +330,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   removeItem: async (itemId: string) => {
+    const removed = get().sidebarItems.find((i) => i.id === itemId);
     await org.deleteItem(itemId);
     await get().refreshSidebar();
+    if (removed) {
+      get().showToast(`Removed “${removed.titleCache}”`, async () => {
+        await org.restoreItem(removed);
+        await get().refreshSidebar();
+      });
+    }
   },
 
   reorderTier: async (_tier: Tier, idsInOrder: string[]) => {
@@ -452,14 +466,42 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { pageId, page, auth } = get();
     if (!pageId || !page) return;
     const sink = writeback.sinkFor(pageId, auth.status === "ready");
+    const captured = writeback.findWithPrev(page.blocks, blockId);
     const result = await writeback.deleteBlock(pageId, page.blocks, blockId, sink);
     set({ page: { ...page, blocks: result.blocks }, writeError: null });
     result.remote.catch((err) =>
       set({ writeError: `Save failed: ${err instanceof Error ? err.message : err}` }),
     );
+    const hadText =
+      captured &&
+      ((captured.block[captured.block.type] as { rich_text?: unknown[] })
+        ?.rich_text?.length ?? 0) > 0;
+    if (captured && hadText) {
+      get().showToast("Block deleted", async () => {
+        const current = get().page;
+        const currentPageId = get().pageId;
+        if (!current || currentPageId !== pageId) return;
+        const restored = await writeback.restoreBlock(
+          pageId, current.blocks, captured.block, captured.prevId, sink,
+        );
+        set({ page: { ...current, blocks: restored.blocks } });
+      });
+    }
   },
 
   setFocusBlock: (blockId) => set({ focusBlockId: blockId }),
+
+  toggleFocusMode: () => set({ focusMode: !get().focusMode }),
+
+  showToast: (message, undo) => {
+    set({ toast: { message, undo } });
+    const shown = get().toast;
+    setTimeout(() => {
+      if (get().toast === shown) set({ toast: null });
+    }, 6000);
+  },
+
+  dismissToast: () => set({ toast: null }),
 
   recomputeUnread: async () => {
     const watched = await org.listAllWatched();

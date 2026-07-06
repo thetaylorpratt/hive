@@ -213,6 +213,11 @@ export async function listAllWatched(): Promise<SidebarItem[]> {
   );
 }
 
+/** Re-insert a fully-formed item (undo path for removals). */
+export function restoreItem(item: SidebarItem): Promise<void> {
+  return insertItem(item);
+}
+
 async function insertItem(item: SidebarItem): Promise<void> {
   if ((await backend()) === "sql") {
     await db!.execute(

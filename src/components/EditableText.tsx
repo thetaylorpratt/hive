@@ -184,6 +184,17 @@ export function EditableText({
           if (!slash) commit();
         }}
         onKeyDown={onKeyDown}
+        onFocus={(e) => {
+          if (useAppStore.getState().focusMode) {
+            e.currentTarget.scrollIntoView({ block: "center", behavior: "smooth" });
+          }
+        }}
+        onInput={(e) => {
+          // typewriter scroll: keep the caret's block vertically centered
+          if (useAppStore.getState().focusMode) {
+            e.currentTarget.scrollIntoView({ block: "center", behavior: "smooth" });
+          }
+        }}
       />
       {slash && slashMatches.length > 0 && (
         <div className="hive-slash-menu">
