@@ -47,13 +47,36 @@ export async function upsertPageCache(
   blocks: HiveBlock[],
 ): Promise<void> {
   const db = await getDb();
+  const editedTime = (page.last_edited_time as string | undefined) ?? null;
   await db.execute(
-    `INSERT INTO page_cache (notion_page_id, blocks_json, properties_json, fetched_at, etag)
-     VALUES ($1, $2, $3, $4, NULL)
+    `INSERT INTO page_cache (notion_page_id, blocks_json, properties_json, fetched_at, etag, last_edited_time)
+     VALUES ($1, $2, $3, $4, NULL, $5)
      ON CONFLICT(notion_page_id) DO UPDATE SET
        blocks_json = excluded.blocks_json,
        properties_json = excluded.properties_json,
-       fetched_at = excluded.fetched_at`,
-    [pageId, JSON.stringify(blocks), JSON.stringify(page), new Date().toISOString()],
+       fetched_at = excluded.fetched_at,
+       last_edited_time = excluded.last_edited_time`,
+    [pageId, JSON.stringify(blocks), JSON.stringify(page), new Date().toISOString(), editedTime],
   );
+}
+
+/** Change-detection metadata (Notifications Tier A). Update-if-cached. */
+export async function setPageEditTime(pageId: string, editedTime: string): Promise<void> {
+  const db = await getDb();
+  await db.execute(
+    "UPDATE page_cache SET last_edited_time = $2 WHERE notion_page_id = $1",
+    [pageId, editedTime],
+  );
+}
+
+export async function getPageEditTimes(): Promise<Record<string, string>> {
+  try {
+    const db = await getDb();
+    const rows = await db.select<{ notion_page_id: string; last_edited_time: string | null }[]>(
+      "SELECT notion_page_id, last_edited_time FROM page_cache WHERE last_edited_time IS NOT NULL",
+    );
+    return Object.fromEntries(rows.map((r) => [r.notion_page_id, r.last_edited_time!]));
+  } catch {
+    return {}; // no SQLite (plain-browser dev) — attention engine stays in-memory
+  }
 }

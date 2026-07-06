@@ -7,6 +7,13 @@ import { fetchFresh, loadCached, normalizePageId } from "../lib/fetchPage";
 import { DEMO_PAGE_ID, demoBlocks, demoPage } from "../lib/demoPage";
 import { upsertPageCache } from "../lib/db";
 import { pageEmoji, pageTitle } from "../lib/pageMeta";
+import { recordHit } from "../lib/frecencyDb";
+import {
+  computeUnread,
+  noteEditTime,
+  primeAttention,
+  startAttentionEngine,
+} from "../lib/attention";
 import * as org from "../lib/orgDb";
 import type { Folder, SidebarItem, Space, Tier } from "../lib/orgDb";
 import type { PageData } from "../lib/types";
@@ -36,6 +43,8 @@ interface AppState {
   folders: Folder[];
   sidebarVisible: boolean;
   commandBarOpen: boolean;
+  unreadPageIds: Set<string>;
+  unreadBySpace: Record<string, number>;
 
   init: () => Promise<void>;
   openPage: (input: string) => Promise<void>;
@@ -60,6 +69,7 @@ interface AppState {
   deleteFolder: (folderId: string) => Promise<void>;
   toggleSidebar: () => void;
   setCommandBarOpen: (open: boolean) => void;
+  recomputeUnread: () => Promise<void>;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -76,6 +86,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   folders: [],
   sidebarVisible: true,
   commandBarOpen: false,
+  unreadPageIds: new Set<string>(),
+  unreadBySpace: {},
 
   init: async () => {
     // Organization plane boots regardless of Notion auth.
@@ -102,6 +114,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     if (!config.notion_token) {
       set({ auth: { status: "missing-token" } });
+      void primeAttention().then(() => get().recomputeUnread());
       return;
     }
     try {
@@ -110,6 +123,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         name?: string;
       };
       set({ auth: { status: "ready", userName: me.name ?? "integration" } });
+      void startAttentionEngine(() => void get().recomputeUnread());
     } catch (err) {
       set({
         auth: {
@@ -155,17 +169,21 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  /** Sidebar bookkeeping after any successful page load. */
+  /** Sidebar + frecency + unread bookkeeping after any successful page load. */
   recordOpen: async (pageId: string, page: PageData) => {
     const { activeSpaceId } = get();
     if (!activeSpaceId) return;
-    await org.touchToday(
-      activeSpaceId,
-      pageId,
-      pageTitle(page.page),
-      pageEmoji(page.page),
-    );
+    const title = pageTitle(page.page);
+    const icon = pageEmoji(page.page);
+    noteEditTime(pageId, page.page.last_edited_time as string | undefined);
+    await org.touchToday(activeSpaceId, pageId, title, icon);
+    try {
+      await recordHit(pageId, title, icon);
+    } catch {
+      /* frecency is best-effort */
+    }
     await get().refreshSidebar();
+    await get().recomputeUnread();
   },
 
   openDemo: async () => {
@@ -301,4 +319,27 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   toggleSidebar: () => set({ sidebarVisible: !get().sidebarVisible }),
   setCommandBarOpen: (open: boolean) => set({ commandBarOpen: open }),
+
+  recomputeUnread: async () => {
+    const watched = await org.listAllWatched();
+    const unread = computeUnread(watched);
+    const unreadBySpace: Record<string, number> = {};
+    for (const item of watched) {
+      if (!unread.has(item.notionPageId)) continue;
+      if (item.spaceId) {
+        unreadBySpace[item.spaceId] = (unreadBySpace[item.spaceId] ?? 0) + 1;
+      }
+    }
+    set({ unreadPageIds: unread, unreadBySpace });
+    try {
+      await invoke("set_badge", { count: unread.size });
+    } catch {
+      /* not running under Tauri */
+    }
+  },
 }));
+
+// Dev hook for driving the store from browser tooling.
+if (import.meta.env.DEV) {
+  (window as unknown as Record<string, unknown>).__hiveStore = useAppStore;
+}

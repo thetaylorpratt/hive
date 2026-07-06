@@ -1,4 +1,6 @@
 import type { ReactNode } from "react";
+import katex from "katex";
+import "katex/dist/katex.min.css";
 import type { HiveBlock, RichTextItem } from "../lib/types";
 import { RichText } from "./RichText";
 import { FallbackCard } from "./FallbackCard";
@@ -125,8 +127,133 @@ const TIER1: Record<string, BlockComponent> = {
   },
 };
 
+/** Tier 2 — render-only (Phase 3). */
+const TIER2: Record<string, BlockComponent> = {
+  image: ({ block }) => {
+    const payload = block.image as {
+      type?: string;
+      external?: { url?: string };
+      file?: { url?: string };
+      caption?: RichTextItem[];
+    };
+    const url = payload?.external?.url ?? payload?.file?.url;
+    if (!url) return <FallbackCard block={block} />;
+    return (
+      <figure className="hive-image">
+        <img src={url} alt={payload.caption?.map((c) => c.plain_text).join("") || "image"} loading="lazy" />
+        {payload.caption && payload.caption.length > 0 && (
+          <figcaption>
+            <RichText items={payload.caption} />
+          </figcaption>
+        )}
+      </figure>
+    );
+  },
+
+  table: ({ block }) => {
+    const payload = block.table as {
+      has_column_header?: boolean;
+      has_row_header?: boolean;
+    };
+    const rows = (block.children ?? []).filter((c) => c.type === "table_row");
+    return (
+      <div className="hive-table-wrap">
+        <table className="hive-table">
+          <tbody>
+            {rows.map((row, ri) => {
+              const cells =
+                (row.table_row as { cells?: RichTextItem[][] })?.cells ?? [];
+              return (
+                <tr key={row.id}>
+                  {cells.map((cell, ci) => {
+                    const isHeader =
+                      (payload?.has_column_header && ri === 0) ||
+                      (payload?.has_row_header && ci === 0);
+                    const Cell = isHeader ? "th" : "td";
+                    return (
+                      <Cell key={ci}>
+                        <RichText items={cell} />
+                      </Cell>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  },
+
+  toggle: ({ block }) => (
+    <details className="hive-toggle">
+      <summary>
+        <RichText items={rich(block)} />
+      </summary>
+      <div className="hive-children">
+        {block.children && <BlockList blocks={block.children} />}
+      </div>
+    </details>
+  ),
+
+  bookmark: ({ block }) => {
+    const payload = block.bookmark as {
+      url?: string;
+      caption?: RichTextItem[];
+    };
+    if (!payload?.url) return <FallbackCard block={block} />;
+    let host = payload.url;
+    try {
+      host = new URL(payload.url).hostname;
+    } catch {
+      /* keep raw */
+    }
+    return (
+      <a className="hive-bookmark" href={payload.url} target="_blank" rel="noreferrer">
+        <span className="host">🔗 {host}</span>
+        <span className="url">{payload.url}</span>
+        {payload.caption && payload.caption.length > 0 && (
+          <span className="caption">
+            <RichText items={payload.caption} />
+          </span>
+        )}
+      </a>
+    );
+  },
+
+  column_list: ({ block }) => (
+    <div className="hive-columns">
+      {(block.children ?? [])
+        .filter((c) => c.type === "column")
+        .map((col) => (
+          <div className="hive-column" key={col.id}>
+            {col.children && <BlockList blocks={col.children} />}
+          </div>
+        ))}
+    </div>
+  ),
+
+  equation: ({ block }) => {
+    const expression =
+      (block.equation as { expression?: string })?.expression ?? "";
+    return (
+      <div
+        className="hive-equation"
+        dangerouslySetInnerHTML={{
+          __html: katex.renderToString(expression, {
+            displayMode: true,
+            throwOnError: false,
+          }),
+        }}
+      />
+    );
+  },
+};
+
+const RENDERERS: Record<string, BlockComponent> = { ...TIER1, ...TIER2 };
+
 function SafeBlock({ block }: { block: HiveBlock }) {
-  const Component = TIER1[block.type];
+  const Component = RENDERERS[block.type];
   if (!Component) return <FallbackCard block={block} />;
   try {
     return <Component block={block} />;

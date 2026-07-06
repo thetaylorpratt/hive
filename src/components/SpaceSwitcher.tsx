@@ -81,6 +81,7 @@ export function SpaceSwitcher() {
   const activeSpaceId = useAppStore((s) => s.activeSpaceId);
   const switchSpace = useAppStore((s) => s.switchSpace);
   const createSpace = useAppStore((s) => s.createSpace);
+  const unreadBySpace = useAppStore((s) => s.unreadBySpace);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const editing = spaces.find((s) => s.id === editingId);
@@ -92,21 +93,27 @@ export function SpaceSwitcher() {
       )}
       <div className="hive-space-row">
         {spaces.map((space, i) => (
-          <button
-            key={space.id}
-            className={`hive-space-dot accent-${space.color}${
-              space.id === activeSpaceId ? " active" : ""
-            }${space.icon ? " has-emoji" : ""}`}
-            title={`${space.name} (⌃${i + 1}) — right-click to edit`}
-            onClick={() => void switchSpace(space.id)}
-            onDoubleClick={() => setEditingId(space.id)}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              setEditingId(space.id);
-            }}
-          >
-            {space.icon ?? space.name.slice(0, 1).toUpperCase()}
-          </button>
+          <span className="hive-space-dot-wrap" key={space.id}>
+            <button
+              className={`hive-space-dot accent-${space.color}${
+                space.id === activeSpaceId ? " active" : ""
+              }${space.icon ? " has-emoji" : ""}`}
+              title={`${space.name} (⌃${i + 1}) — right-click to edit`}
+              onClick={() => void switchSpace(space.id)}
+              onDoubleClick={() => setEditingId(space.id)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setEditingId(space.id);
+              }}
+            >
+              {space.icon ?? space.name.slice(0, 1).toUpperCase()}
+            </button>
+            {(unreadBySpace[space.id] ?? 0) > 0 && (
+              <span className="hive-space-badge">
+                {unreadBySpace[space.id]}
+              </span>
+            )}
+          </span>
         ))}
         <button
           className="hive-space-dot add"

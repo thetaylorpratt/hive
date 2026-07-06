@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import katex from "katex";
 import type { RichTextItem } from "../lib/types";
 
 /** Notion text colors mapped onto Hive/Lattice-adjacent values. */
@@ -28,6 +29,18 @@ const BG_COLOR: Record<string, string> = {
 
 function Leaf({ item }: { item: RichTextItem }) {
   const { annotations, plain_text, href } = item;
+
+  if (item.type === "equation") {
+    const expression =
+      (item.equation as { expression?: string })?.expression ?? plain_text;
+    return (
+      <span
+        dangerouslySetInnerHTML={{
+          __html: katex.renderToString(expression, { throwOnError: false }),
+        }}
+      />
+    );
+  }
   const style: CSSProperties = {};
   if (annotations.bold) style.fontWeight = 600;
   if (annotations.italic) style.fontStyle = "italic";

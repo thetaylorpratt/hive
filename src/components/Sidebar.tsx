@@ -19,6 +19,7 @@ function ItemRow({ item }: { item: SidebarItem }) {
   const setItemTier = useAppStore((s) => s.setItemTier);
   const removeItem = useAppStore((s) => s.removeItem);
   const currentPageId = useAppStore((s) => s.pageId);
+  const unread = useAppStore((s) => s.unreadPageIds.has(item.notionPageId));
   const active = currentPageId === item.notionPageId;
 
   return (
@@ -34,6 +35,7 @@ function ItemRow({ item }: { item: SidebarItem }) {
     >
       <span className="icon">{item.iconCache ?? "📄"}</span>
       <span className="title">{item.titleCache}</span>
+      {unread && <span className="hive-unread-dot" title="Changed since you last opened it" />}
       <span className="actions" onClick={(e) => e.stopPropagation()}>
         {item.tier !== "favorite" && (
           <button

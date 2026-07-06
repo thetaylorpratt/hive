@@ -52,6 +52,14 @@ async fn open_embed(app: tauri::AppHandle, url: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Unread-count badge on the macOS dock icon (Notifications Tier A).
+#[tauri::command]
+fn set_badge(app: tauri::AppHandle, count: i64) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.set_badge_count(if count > 0 { Some(count) } else { None });
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Phase 1 creates only the content-plane cache. Org-plane tables
@@ -112,6 +120,21 @@ pub fn run() {
             sql: "ALTER TABLE space ADD COLUMN icon TEXT;",
             kind: MigrationKind::Up,
         },
+        // Phase 3: navigation intelligence + change detection.
+        Migration {
+            version: 4,
+            description: "frecency_and_edit_times",
+            sql: "CREATE TABLE IF NOT EXISTS frecency (
+                    notion_page_id TEXT PRIMARY KEY,
+                    hit_count INTEGER NOT NULL DEFAULT 0,
+                    last_hit_at TEXT,
+                    title_cache TEXT,
+                    icon_cache TEXT,
+                    score_cache REAL
+                  );
+                  ALTER TABLE page_cache ADD COLUMN last_edited_time TEXT;",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -122,7 +145,7 @@ pub fn run() {
                 .add_migrations("sqlite:hive.db", migrations)
                 .build(),
         )
-        .invoke_handler(tauri::generate_handler![get_config, open_embed])
+        .invoke_handler(tauri::generate_handler![get_config, open_embed, set_badge])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

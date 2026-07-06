@@ -222,6 +222,131 @@ body {
   text-decoration: line-through;
 }
 
+/* ---- Tier 2 blocks ---- */
+
+.hive-image {
+  margin: 0.8em 0;
+}
+.hive-image img {
+  max-width: 100%;
+  border-radius: var(--hive-radius);
+  display: block;
+}
+.hive-image figcaption {
+  font-size: 0.75rem;
+  color: var(--hive-color-fg-muted);
+  margin-top: 4px;
+}
+
+.hive-table-wrap {
+  overflow-x: auto;
+  margin: 0.8em 0;
+}
+.hive-table {
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  min-width: 50%;
+}
+.hive-table th,
+.hive-table td {
+  border: 1px solid var(--hive-color-border-subtle);
+  padding: 5px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+.hive-table th {
+  background: var(--hive-color-bg-subtle);
+  font-weight: 600;
+}
+
+.hive-toggle {
+  margin: 0.35em 0;
+}
+.hive-toggle > summary {
+  cursor: pointer;
+  font-weight: 500;
+}
+.hive-toggle > summary::marker {
+  color: var(--hive-color-fg-muted);
+}
+
+.hive-bookmark {
+  display: block;
+  border: 1px solid var(--hive-color-border-subtle);
+  border-radius: var(--hive-radius);
+  padding: 10px 12px;
+  margin: 0.6em 0;
+  text-decoration: none !important;
+  background: var(--hive-color-bg-surface);
+}
+.hive-bookmark:hover {
+  border-color: var(--hive-color-accent);
+}
+.hive-bookmark .host {
+  display: block;
+  font-weight: 500;
+  color: var(--hive-color-fg);
+}
+.hive-bookmark .url {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--hive-color-fg-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hive-bookmark .caption {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--hive-color-fg-secondary);
+  margin-top: 2px;
+}
+
+.hive-columns {
+  display: flex;
+  gap: 20px;
+  margin: 0.6em 0;
+}
+.hive-column {
+  flex: 1;
+  min-width: 0;
+}
+
+.hive-equation {
+  margin: 0.8em 0;
+  overflow-x: auto;
+}
+
+/* ---- unread indicators (Notifications Tier A) ---- */
+
+.hive-unread-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--hive-color-accent);
+  flex-shrink: 0;
+}
+
+.hive-space-dot-wrap {
+  position: relative;
+}
+.hive-space-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--hive-color-critical-fg);
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
 .hive-fallback {
   display: flex;
   align-items: center;

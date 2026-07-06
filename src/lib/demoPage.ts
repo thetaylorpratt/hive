@@ -130,6 +130,80 @@ export const demoBlocks: HiveBlock[] = [
     ],
   }),
   block("divider", {}),
+  block("heading_1", { rich_text: [text("Tier 2 blocks (Phase 3)")] }),
+  block("image", {
+    type: "external",
+    external: {
+      url:
+        "data:image/svg+xml;utf8," +
+        encodeURIComponent(
+          `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="120"><rect width="480" height="120" rx="12" fill="#0077cc"/><text x="240" y="68" text-anchor="middle" font-family="Roboto,Arial" font-size="26" fill="#fff">🐝 rendered image block</text></svg>`,
+        ),
+    },
+    caption: [text("An image block, with a caption")],
+  }),
+  block(
+    "table",
+    { table_width: 3, has_column_header: true, has_row_header: false },
+    [
+      block("table_row", {
+        cells: [[text("Tier", { bold: true })], [text("Examples")], [text("Behavior")]],
+      }),
+      block("table_row", {
+        cells: [[text("1")], [text("paragraphs, lists, code")], [text("render + edit later")]],
+      }),
+      block("table_row", {
+        cells: [[text("2")], [text("images, tables, toggles")], [text("render only")]],
+      }),
+      block("table_row", {
+        cells: [[text("3")], [text("synced blocks, databases")], [text("fallback card")]],
+      }),
+    ],
+  ),
+  block(
+    "toggle",
+    { rich_text: [text("A toggle block — click to expand")] },
+    [
+      block("paragraph", {
+        rich_text: [text("Nested content renders through the same dispatch table.")],
+      }),
+    ],
+  ),
+  block("bookmark", {
+    url: "https://arc.net",
+    caption: [text("The north star")],
+  }),
+  block(
+    "column_list",
+    {},
+    [
+      block("column", {}, [
+        block("paragraph", {
+          rich_text: [text("Left column. ", { bold: true }), text("Columns flex side by side.")],
+        }),
+      ]),
+      block("column", {}, [
+        block("paragraph", {
+          rich_text: [
+            text("Right column, with inline math "),
+            {
+              type: "equation",
+              plain_text: "e^{i\\pi}+1=0",
+              href: null,
+              equation: { expression: "e^{i\\pi}+1=0" },
+              annotations: {
+                bold: false, italic: false, strikethrough: false,
+                underline: false, code: false, color: "default",
+              },
+            } as RichTextItem,
+            text("."),
+          ],
+        }),
+      ]),
+    ],
+  ),
+  block("equation", { expression: "f(x) = \\int_{-\\infty}^{\\infty} \\hat{f}(\\xi)\\, e^{2\\pi i \\xi x} \\, d\\xi" }),
+  block("divider", {}),
   block("heading_2", { rich_text: [text("Graceful degradation")] }),
   block("paragraph", {
     rich_text: [
@@ -138,9 +212,6 @@ export const demoBlocks: HiveBlock[] = [
       ),
     ],
   }),
-  block("image", {
-    type: "external",
-    external: { url: "https://example.com/x.png" },
-  }),
   block("child_database", { title: "Roadmap (linked database)" }),
+  block("synced_block", {}),
 ];

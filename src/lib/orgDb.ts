@@ -200,6 +200,19 @@ export async function listSidebar(spaceId: string): Promise<SidebarItem[]> {
     .sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
+/** Favorites + pins across ALL Spaces — the attention engine's watch list. */
+export async function listAllWatched(): Promise<SidebarItem[]> {
+  if ((await backend()) === "sql") {
+    const rows = await db!.select<ItemRow[]>(
+      "SELECT * FROM sidebar_item WHERE tier IN ('favorite', 'pinned')",
+    );
+    return rows.map(itemFromRow);
+  }
+  return local!.items.filter(
+    (i) => i.tier === "favorite" || i.tier === "pinned",
+  );
+}
+
 async function insertItem(item: SidebarItem): Promise<void> {
   if ((await backend()) === "sql") {
     await db!.execute(

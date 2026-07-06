@@ -3,20 +3,23 @@ import { useAppStore } from "../store/appStore";
 import { notion } from "../lib/notionClient";
 import { enqueue } from "../lib/queue";
 import { pageEmoji, pageTitle } from "../lib/pageMeta";
+import { topRecents } from "../lib/frecencyDb";
+import type { FrecencyEntry } from "../lib/frecencyDb";
 
 /**
- * Cmd-T command bar — Phase 2 minimal version: fuzzy-match local sidebar
- * items (recents first) and live Notion search when authed. Frecency ranking
- * and app actions land in Phase 3.
+ * Cmd-T command bar (Phase 3): one input searches sidebar docs,
+ * frecency-ranked recents, live Notion search (when authed), and app
+ * actions — fuzzy-matched and merged into a single ranked list.
  */
 
 interface Result {
   key: string;
-  pageId: string;
   title: string;
   icon: string | null;
-  source: "sidebar" | "notion";
+  source: "sidebar" | "recent" | "notion" | "action";
   hint?: string;
+  pageId?: string;
+  run?: () => void;
 }
 
 /** Cheap subsequence fuzzy score: higher is better, null = no match. */
@@ -39,16 +42,66 @@ function fuzzyScore(query: string, target: string): number | null {
   return qi === q.length ? score - t.length * 0.01 : null;
 }
 
+/** App actions surfaced through the same input (Phase 3 scope). */
+function useActions(): Result[] {
+  const store = useAppStore;
+  const pageId = useAppStore((s) => s.pageId);
+  const pageOpen = Boolean(pageId);
+  const realPage = pageOpen && !pageId?.startsWith("00000000-0000");
+
+  const action = (title: string, icon: string, run: () => void): Result => ({
+    key: `action-${title}`,
+    title,
+    icon,
+    source: "action",
+    hint: "action",
+    run,
+  });
+
+  const actions: Result[] = [
+    action("New Space", "✨", () => void store.getState().createSpace()),
+    action("New folder", "📁", () => void store.getState().createFolder()),
+    action("Toggle sidebar", "◧", () => store.getState().toggleSidebar()),
+  ];
+  if (pageOpen) {
+    actions.push(
+      action("Pin current doc", "📌", () => void pinCurrent("pinned")),
+      action("Favorite current doc", "★", () => void pinCurrent("favorite")),
+    );
+  }
+  if (realPage) {
+    actions.push(
+      action("Open current doc in Notion", "↗", () => {
+        const id = store.getState().pageId!.replace(/-/g, "");
+        const url = `https://www.notion.so/${id}`;
+        void import("@tauri-apps/plugin-opener")
+          .then((m) => m.openUrl(url))
+          .catch(() => window.open(url, "_blank"));
+      }),
+    );
+  }
+  return actions;
+}
+
+async function pinCurrent(tier: "pinned" | "favorite") {
+  const s = useAppStore.getState();
+  if (!s.pageId) return;
+  const item = s.sidebarItems.find((i) => i.notionPageId === s.pageId);
+  if (item) await s.setItemTier(item.id, tier);
+}
+
 export function CommandBar() {
   const open = useAppStore((s) => s.commandBarOpen);
   const setOpen = useAppStore((s) => s.setCommandBarOpen);
   const sidebarItems = useAppStore((s) => s.sidebarItems);
   const openPage = useAppStore((s) => s.openPage);
   const authReady = useAppStore((s) => s.auth.status === "ready");
+  const actions = useActions();
 
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
   const [remote, setRemote] = useState<Result[]>([]);
+  const [recents, setRecents] = useState<FrecencyEntry[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -58,6 +111,7 @@ export function CommandBar() {
       setRemote([]);
       setSelected(0);
       requestAnimationFrame(() => inputRef.current?.focus());
+      topRecents(30).then(setRecents).catch(() => setRecents([]));
     }
   }, [open]);
 
@@ -96,34 +150,63 @@ export function CommandBar() {
   }, [query, open, authReady]);
 
   const results = useMemo<Result[]>(() => {
+    const scored: { result: Result; score: number }[] = [];
+
+    for (const item of sidebarItems) {
+      const score = fuzzyScore(query, item.titleCache);
+      if (score === null) continue;
+      scored.push({
+        score: score + 2, // sidebar docs outrank equal-scoring recents
+        result: {
+          key: `local-${item.id}`,
+          pageId: item.notionPageId,
+          title: item.titleCache,
+          icon: item.iconCache,
+          source: "sidebar",
+          hint: item.tier,
+        },
+      });
+    }
+
+    recents.forEach((entry, rank) => {
+      const score = fuzzyScore(query, entry.titleCache);
+      if (score === null) return;
+      scored.push({
+        score: score + 1 - rank * 0.05, // frecency order breaks ties
+        result: {
+          key: `recent-${entry.notionPageId}`,
+          pageId: entry.notionPageId,
+          title: entry.titleCache,
+          icon: entry.iconCache,
+          source: "recent",
+          hint: "recent",
+        },
+      });
+    });
+
+    for (const a of actions) {
+      // Actions surface only when searched for — docs own the empty state.
+      if (!query) continue;
+      const score = fuzzyScore(query, a.title);
+      if (score === null) continue;
+      scored.push({ score, result: a });
+    }
+
+    for (const r of remote) {
+      const score = fuzzyScore(query, r.title) ?? 0;
+      scored.push({ score, result: r });
+    }
+
     const seen = new Set<string>();
-    const localResults = sidebarItems
-      .map((i) => ({
-        item: i,
-        score: fuzzyScore(query, i.titleCache),
-      }))
-      .filter((x): x is { item: (typeof sidebarItems)[number]; score: number } => x.score !== null)
-      .sort(
-        (a, b) =>
-          b.score - a.score ||
-          (b.item.lastOpenedAt ?? "").localeCompare(a.item.lastOpenedAt ?? ""),
-      )
-      .map(({ item }) => ({
-        key: `local-${item.id}`,
-        pageId: item.notionPageId,
-        title: item.titleCache,
-        icon: item.iconCache,
-        source: "sidebar" as const,
-        hint: item.tier,
-      }));
     const merged: Result[] = [];
-    for (const r of [...localResults, ...remote]) {
-      if (seen.has(r.pageId)) continue;
-      seen.add(r.pageId);
-      merged.push(r);
+    for (const { result } of scored.sort((a, b) => b.score - a.score)) {
+      const dedupeKey = result.pageId ?? result.key;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      merged.push(result);
     }
     return merged.slice(0, 12);
-  }, [query, sidebarItems, remote]);
+  }, [query, sidebarItems, remote, recents, actions]);
 
   useEffect(() => {
     setSelected((s) => Math.min(s, Math.max(0, results.length - 1)));
@@ -134,7 +217,8 @@ export function CommandBar() {
   const pick = (r: Result | undefined) => {
     if (!r) return;
     setOpen(false);
-    void openPage(r.pageId);
+    if (r.run) r.run();
+    else if (r.pageId) void openPage(r.pageId);
   };
 
   return (
