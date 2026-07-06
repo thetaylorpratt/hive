@@ -180,8 +180,25 @@ Where the vendored copy falls short (component-level detail, iconography), refer
 
 ---
 
+## 6.5 Pending build-time research: block-type inventory
+
+To validate the Tier 1/2/3 split against real Honeycomb docs, sample ~8
+diverse pages (meeting notes, runbook, RFC, wiki home, retro, project plan,
+onboarding, one database-heavy page) and tally construct frequency into
+`docs/BLOCK_INVENTORY.md`. First attempt (2026-07-06) failed: the Notion MCP
+connector returned 503/429 for the whole session. Preferred rerun path: once
+the integration token exists, sample via the REST API directly — it returns
+exact block types (better validation data than MCP's markdown-inferred
+constructs). This feeds the Phase 3 Tier 2 scoping.
+
 ## 7. Immediate next steps
 
-1. Phase 0 pre-flight (the integration-token check is the only true unknown left).
-2. Move this folder into a git repo at `~/Documents/hive`, push private to `thetaylorpratt/hive`.
-3. Kick off Phase 1 with `CLAUDE_CODE_PROMPT.md` as written — it's consistent with this plan — plus the one addition: seed `theme.css` from the Lattice values in §4.
+*(updated 2026-07-06 — Phase 1 is built; repo is live at `thetaylorpratt/hive`)*
+
+1. Phase 0 pre-flight: **waiting on a Honeycomb workspace admin** to approve
+   the internal integration. When the token arrives: `~/.hive/config.json` →
+   `{ "notionToken": "ntn_..." }`, relaunch, paste a page URL to verify the
+   pipe end-to-end.
+2. Run the block-type inventory (§6.5) once API access exists.
+3. Daily-drive reading + fill in `SPIKE_NOTES.md`, then start Phase 2
+   (sidebar + Spaces — buildable without the token if IT drags).
