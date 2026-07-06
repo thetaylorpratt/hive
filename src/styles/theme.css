@@ -1,0 +1,318 @@
+@import "tailwindcss";
+
+/*
+ * Hive theme tokens.
+ *
+ * Values are extracted from Honeycomb's Lattice design tokens (values only —
+ * Lattice source is never vendored here). Light theme maps to Lattice light,
+ * [data-theme="dark"] maps to Lattice dark. Per-Space accent theming (Phase 2)
+ * will override the --hive-color-accent-* group under [data-space-theme="..."].
+ */
+
+:root {
+  /* surfaces */
+  --hive-color-bg-app: #f5f7fa;
+  --hive-color-bg-surface: #ffffff;
+  --hive-color-bg-subtle: #ebeff4;
+
+  /* borders */
+  --hive-color-border: #c9d1df;
+  --hive-color-border-subtle: #dee3ec;
+
+  /* text */
+  --hive-color-fg: #191a1b;
+  --hive-color-fg-secondary: #59606d;
+  --hive-color-fg-muted: #717a89;
+  --hive-color-fg-inverse: #ffffff;
+
+  /* interactive (Lattice sky) */
+  --hive-color-accent: #0077cc;
+  --hive-color-accent-hover: #0066ba;
+  --hive-color-accent-active: #00489c;
+  --hive-color-accent-subtle: #e3f2fc;
+
+  /* semantic */
+  --hive-color-success-bg: #d8efc0;
+  --hive-color-success-fg: #4ca600;
+  --hive-color-warning-bg: #ffeab2;
+  --hive-color-warning-fg: #a94a04;
+  --hive-color-critical-bg: #f7d2d7;
+  --hive-color-critical-fg: #c54b49;
+
+  /* geometry */
+  --hive-radius-sm: 4px;
+  --hive-radius: 8px;
+  --hive-radius-lg: 12px;
+
+  /* elevation */
+  --hive-shadow-sm: 0 1px 3px rgba(25, 26, 27, 0.12);
+  --hive-shadow-popover: 0 4px 16px rgba(25, 26, 27, 0.18);
+
+  /* type */
+  --hive-font-sans: Roboto, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --hive-font-mono: "Roboto Mono", ui-monospace, SFMono-Regular, Menlo,
+    monospace;
+}
+
+[data-theme="dark"] {
+  --hive-color-bg-app: #191a1b;
+  --hive-color-bg-surface: #272b30;
+  --hive-color-bg-subtle: #1e2023;
+
+  --hive-color-border: #444a53;
+  --hive-color-border-subtle: #33383f;
+
+  --hive-color-fg: #f5f7fa;
+  --hive-color-fg-secondary: #b0baca;
+  --hive-color-fg-muted: #717a89;
+  --hive-color-fg-inverse: #191a1b;
+
+  --hive-color-accent: #3aa5ee;
+  --hive-color-accent-hover: #5cb5f1;
+  --hive-color-accent-active: #1e95e9;
+  --hive-color-accent-subtle: rgba(58, 165, 238, 0.14);
+
+  --hive-color-success-bg: rgba(100, 186, 0, 0.18);
+  --hive-color-success-fg: #8ed24e;
+  --hive-color-warning-bg: rgba(255, 234, 178, 0.18);
+  --hive-color-warning-fg: #ffce6b;
+  --hive-color-critical-bg: rgba(247, 210, 215, 0.14);
+  --hive-color-critical-fg: #e7827f;
+
+  --hive-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --hive-shadow-popover: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--hive-font-sans);
+  font-size: 0.875rem;
+  line-height: 1.55;
+  background: var(--hive-color-bg-app);
+  color: var(--hive-color-fg);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- block renderer ---- */
+
+.hive-doc {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 2.5rem 2rem 6rem;
+}
+
+.hive-doc h1,
+.hive-doc h2,
+.hive-doc h3 {
+  font-weight: 600;
+  line-height: 1.25;
+  margin: 1.4em 0 0.4em;
+}
+
+.hive-doc h1 {
+  font-size: 1.75rem;
+}
+.hive-doc h2 {
+  font-size: 1.375rem;
+}
+.hive-doc h3 {
+  font-size: 1.125rem;
+}
+
+.hive-page-title {
+  font-size: 2rem;
+  font-weight: 600;
+  margin: 0 0 1.5rem;
+  line-height: 1.2;
+}
+
+.hive-doc p {
+  margin: 0.35em 0;
+}
+
+.hive-doc ul,
+.hive-doc ol {
+  margin: 0.35em 0;
+  padding-left: 1.5em;
+}
+
+.hive-doc li {
+  margin: 0.15em 0;
+}
+
+.hive-doc a {
+  color: var(--hive-color-accent);
+  text-decoration: none;
+}
+.hive-doc a:hover {
+  text-decoration: underline;
+}
+
+.hive-inline-code {
+  font-family: var(--hive-font-mono);
+  font-size: 0.85em;
+  background: var(--hive-color-bg-subtle);
+  border-radius: var(--hive-radius-sm);
+  padding: 0.1em 0.35em;
+  color: var(--hive-color-critical-fg);
+}
+
+.hive-quote {
+  border-left: 3px solid var(--hive-color-fg);
+  padding-left: 0.9em;
+  margin: 0.6em 0;
+}
+
+.hive-callout {
+  display: flex;
+  gap: 0.6em;
+  background: var(--hive-color-bg-subtle);
+  border: 1px solid var(--hive-color-border-subtle);
+  border-radius: var(--hive-radius);
+  padding: 12px;
+  margin: 0.6em 0;
+}
+
+.hive-divider {
+  border: none;
+  border-top: 1px solid var(--hive-color-border);
+  margin: 1.2em 0;
+}
+
+.hive-code-block {
+  background: var(--hive-color-bg-subtle);
+  border: 1px solid var(--hive-color-border-subtle);
+  border-radius: var(--hive-radius);
+  margin: 0.6em 0;
+  overflow: hidden;
+}
+.hive-code-block .lang {
+  font-size: 0.7rem;
+  color: var(--hive-color-fg-muted);
+  padding: 4px 12px 0;
+  text-transform: lowercase;
+}
+.hive-code-block pre {
+  margin: 0;
+  padding: 8px 12px 12px;
+  overflow-x: auto;
+  font-family: var(--hive-font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.hive-todo {
+  display: flex;
+  gap: 0.5em;
+  align-items: baseline;
+  margin: 0.15em 0;
+}
+.hive-todo input {
+  accent-color: var(--hive-color-accent);
+  transform: translateY(1px);
+}
+.hive-todo.done > span {
+  color: var(--hive-color-fg-muted);
+  text-decoration: line-through;
+}
+
+.hive-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1em;
+  border: 1px dashed var(--hive-color-border);
+  border-radius: var(--hive-radius);
+  background: var(--hive-color-bg-subtle);
+  padding: 10px 12px;
+  margin: 0.6em 0;
+  color: var(--hive-color-fg-secondary);
+}
+.hive-fallback .type {
+  font-family: var(--hive-font-mono);
+  font-size: 0.75rem;
+  background: var(--hive-color-bg-surface);
+  border: 1px solid var(--hive-color-border-subtle);
+  border-radius: var(--hive-radius-sm);
+  padding: 1px 6px;
+}
+
+.hive-children {
+  padding-left: 1.5em;
+}
+
+/* ---- chrome ---- */
+
+.hive-btn {
+  font: inherit;
+  font-weight: 500;
+  border: none;
+  border-radius: var(--hive-radius);
+  padding: 6px 14px;
+  cursor: pointer;
+  background: var(--hive-color-accent);
+  color: var(--hive-color-fg-inverse);
+}
+.hive-btn:hover {
+  background: var(--hive-color-accent-hover);
+}
+.hive-btn:active {
+  background: var(--hive-color-accent-active);
+}
+.hive-btn:disabled {
+  background: var(--hive-color-bg-subtle);
+  color: var(--hive-color-fg-muted);
+  cursor: not-allowed;
+}
+
+.hive-btn-secondary {
+  background: var(--hive-color-bg-surface);
+  color: var(--hive-color-fg);
+  border: 1px solid var(--hive-color-border);
+}
+.hive-btn-secondary:hover {
+  background: var(--hive-color-bg-subtle);
+}
+.hive-btn-secondary:active {
+  background: var(--hive-color-bg-subtle);
+}
+
+.hive-input {
+  font: inherit;
+  border: 1px solid var(--hive-color-border);
+  border-radius: var(--hive-radius);
+  padding: 6px 10px;
+  background: var(--hive-color-bg-surface);
+  color: var(--hive-color-fg);
+  min-width: 0;
+}
+.hive-input:focus {
+  outline: 2px solid var(--hive-color-accent);
+  outline-offset: -1px;
+}
+
+.hive-segment {
+  display: inline-flex;
+  border: 1px solid var(--hive-color-border);
+  border-radius: var(--hive-radius);
+  overflow: hidden;
+}
+.hive-segment button {
+  font: inherit;
+  border: none;
+  background: var(--hive-color-bg-surface);
+  color: var(--hive-color-fg-secondary);
+  padding: 5px 12px;
+  cursor: pointer;
+}
+.hive-segment button.active {
+  background: var(--hive-color-accent-subtle);
+  color: var(--hive-color-accent);
+  font-weight: 500;
+}
