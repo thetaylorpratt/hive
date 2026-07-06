@@ -4,6 +4,7 @@ import { Header } from "./components/Header";
 import { BlockList } from "./components/BlockRenderer";
 import { Sidebar } from "./components/Sidebar";
 import { CommandBar } from "./components/CommandBar";
+import { MruSwitcher } from "./components/MruSwitcher";
 import { installKeymap } from "./lib/keymap";
 import { pageEmoji, pageTitle } from "./lib/pageMeta";
 
@@ -195,6 +196,7 @@ export default function App() {
         </main>
       </div>
       <CommandBar />
+      <MruSwitcher />
     </div>
   );
 }

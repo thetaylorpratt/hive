@@ -6,7 +6,8 @@ import { enqueue } from "../lib/queue";
 import { fetchFresh, loadCached, normalizePageId } from "../lib/fetchPage";
 import { DEMO_PAGE_ID, DEMO_VERSION, demoBlocks, demoPage } from "../lib/demoPage";
 import { upsertPageCache } from "../lib/db";
-import { pageEmoji, pageTitle } from "../lib/pageMeta";
+import { blocksToPlainText, pageEmoji, pageTitle } from "../lib/pageMeta";
+import { indexPageForSearch } from "../lib/db";
 import { recordHit } from "../lib/frecencyDb";
 import {
   computeUnread,
@@ -46,6 +47,7 @@ interface AppState {
   commandBarOpen: boolean;
   unreadPageIds: Set<string>;
   unreadBySpace: Record<string, number>;
+  mru: { pageId: string; title: string; icon: string | null }[];
 
   init: () => Promise<void>;
   openPage: (input: string) => Promise<void>;
@@ -99,6 +101,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   commandBarOpen: false,
   unreadPageIds: new Set<string>(),
   unreadBySpace: {},
+  mru: [],
 
   init: async () => {
     // Organization plane boots regardless of Notion auth.
@@ -193,6 +196,17 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch {
       /* frecency is best-effort */
     }
+    void indexPageForSearch(
+      pageId,
+      title,
+      blocksToPlainText(page.blocks as Parameters<typeof blocksToPlainText>[0]),
+    );
+    // MRU stack for the Ctrl+Tab switcher
+    const mru = [
+      { pageId, title, icon },
+      ...get().mru.filter((m) => m.pageId !== pageId),
+    ].slice(0, 8);
+    set({ mru });
     await get().refreshSidebar();
     await get().recomputeUnread();
   },

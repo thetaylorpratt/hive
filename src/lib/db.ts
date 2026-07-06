@@ -60,6 +60,74 @@ export async function upsertPageCache(
   );
 }
 
+/* ---- local full-text search (FTS5; graceful no-op if unavailable) ---- */
+
+let ftsAvailable: boolean | null = null;
+
+async function ensureFts(db: Database): Promise<boolean> {
+  if (ftsAvailable !== null) return ftsAvailable;
+  try {
+    await db.execute(
+      "CREATE VIRTUAL TABLE IF NOT EXISTS page_fts USING fts5(notion_page_id UNINDEXED, title, body)",
+    );
+    ftsAvailable = true;
+  } catch {
+    ftsAvailable = false; // SQLite built without FTS5 — search degrades to titles
+  }
+  return ftsAvailable;
+}
+
+export async function indexPageForSearch(
+  pageId: string,
+  title: string,
+  body: string,
+): Promise<void> {
+  try {
+    const db = await getDb();
+    if (!(await ensureFts(db))) return;
+    await db.execute("DELETE FROM page_fts WHERE notion_page_id = $1", [pageId]);
+    await db.execute(
+      "INSERT INTO page_fts (notion_page_id, title, body) VALUES ($1, $2, $3)",
+      [pageId, title, body],
+    );
+  } catch {
+    /* indexing is best-effort */
+  }
+}
+
+export interface SearchHit {
+  pageId: string;
+  title: string;
+  snippet: string;
+}
+
+export async function searchCachedPages(query: string): Promise<SearchHit[]> {
+  try {
+    const db = await getDb();
+    if (!(await ensureFts(db))) return [];
+    const terms = query.replace(/['"*^]/g, " ").trim();
+    if (!terms) return [];
+    const match = terms
+      .split(/\s+/)
+      .map((t) => `"${t}"*`)
+      .join(" ");
+    const rows = await db.select<
+      { notion_page_id: string; title: string; snip: string }[]
+    >(
+      `SELECT notion_page_id, title, snippet(page_fts, 2, '', '', '…', 10) AS snip
+       FROM page_fts WHERE page_fts MATCH $1 ORDER BY rank LIMIT 10`,
+      [match],
+    );
+    return rows.map((r) => ({
+      pageId: r.notion_page_id,
+      title: r.title || "Untitled",
+      snippet: r.snip,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 /** Persist edited block tree without touching page properties (editor path). */
 export async function updateCachedBlocks(
   pageId: string,

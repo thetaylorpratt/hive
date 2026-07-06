@@ -4,6 +4,8 @@ import { notion } from "../lib/notionClient";
 import { enqueue } from "../lib/queue";
 import { pageEmoji, pageTitle } from "../lib/pageMeta";
 import { topRecents } from "../lib/frecencyDb";
+import { searchCachedPages } from "../lib/db";
+import type { SearchHit } from "../lib/db";
 import type { FrecencyEntry } from "../lib/frecencyDb";
 
 /**
@@ -16,8 +18,10 @@ interface Result {
   key: string;
   title: string;
   icon: string | null;
-  source: "sidebar" | "recent" | "notion" | "action";
+  source: "sidebar" | "recent" | "cached" | "notion" | "action";
   hint?: string;
+  keyHint?: string;
+  subtitle?: string;
   pageId?: string;
   run?: () => void;
 }
@@ -42,26 +46,41 @@ function fuzzyScore(query: string, target: string): number | null {
   return qi === q.length ? score - t.length * 0.01 : null;
 }
 
-/** App actions surfaced through the same input (Phase 3 scope). */
+/** App actions surfaced through the same input; keyHint teaches the shortcut. */
 function useActions(): Result[] {
   const store = useAppStore;
   const pageId = useAppStore((s) => s.pageId);
+  const spaces = useAppStore((s) => s.spaces);
   const pageOpen = Boolean(pageId);
   const realPage = pageOpen && !pageId?.startsWith("00000000-0000");
 
-  const action = (title: string, icon: string, run: () => void): Result => ({
+  const action = (
+    title: string,
+    icon: string,
+    run: () => void,
+    keyHint?: string,
+  ): Result => ({
     key: `action-${title}`,
     title,
     icon,
     source: "action",
     hint: "action",
+    keyHint,
     run,
   });
 
   const actions: Result[] = [
     action("New Space", "✨", () => void store.getState().createSpace()),
     action("New folder", "📁", () => void store.getState().createFolder()),
-    action("Toggle sidebar", "◧", () => store.getState().toggleSidebar()),
+    action("Toggle sidebar", "◧", () => store.getState().toggleSidebar(), "⌘\\"),
+    ...spaces.map((space, i) =>
+      action(
+        `Switch to Space: ${space.name}`,
+        space.icon ?? "⬡",
+        () => void store.getState().switchSpace(space.id),
+        i < 9 ? `⌃${i + 1}` : undefined,
+      ),
+    ),
   ];
   if (pageOpen) {
     actions.push(
@@ -102,6 +121,7 @@ export function CommandBar() {
   const [selected, setSelected] = useState(0);
   const [remote, setRemote] = useState<Result[]>([]);
   const [recents, setRecents] = useState<FrecencyEntry[]>([]);
+  const [cached, setCached] = useState<SearchHit[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -114,6 +134,18 @@ export function CommandBar() {
       topRecents(30).then(setRecents).catch(() => setRecents([]));
     }
   }, [open]);
+
+  // Local full-text search over cached pages — instant, zero API cost.
+  useEffect(() => {
+    if (!open || query.trim().length < 2) {
+      setCached([]);
+      return;
+    }
+    const t = setTimeout(() => {
+      void searchCachedPages(query).then(setCached);
+    }, 120);
+    return () => clearTimeout(t);
+  }, [query, open]);
 
   // Live Notion search, debounced, through the queue.
   useEffect(() => {
@@ -192,6 +224,23 @@ export function CommandBar() {
       scored.push({ score, result: a });
     }
 
+    for (const hit of cached) {
+      // Body-matched: surface even when the title doesn't fuzzy-match.
+      const score = (fuzzyScore(query, hit.title) ?? 0) + 1.5;
+      scored.push({
+        score,
+        result: {
+          key: `cached-${hit.pageId}`,
+          pageId: hit.pageId,
+          title: hit.title,
+          icon: null,
+          source: "cached",
+          hint: "cached",
+          subtitle: hit.snippet,
+        },
+      });
+    }
+
     for (const r of remote) {
       const score = fuzzyScore(query, r.title) ?? 0;
       scored.push({ score, result: r });
@@ -206,7 +255,7 @@ export function CommandBar() {
       merged.push(result);
     }
     return merged.slice(0, 12);
-  }, [query, sidebarItems, remote, recents, actions]);
+  }, [query, sidebarItems, remote, recents, cached, actions]);
 
   useEffect(() => {
     setSelected((s) => Math.min(s, Math.max(0, results.length - 1)));
@@ -256,10 +305,17 @@ export function CommandBar() {
               onClick={() => pick(r)}
             >
               <span className="icon">{r.icon ?? "📄"}</span>
-              <span className="title">{r.title}</span>
-              <span className="hint">
-                {r.source === "notion" ? "Notion" : r.hint}
+              <span className="title">
+                {r.title}
+                {r.subtitle && <span className="subtitle"> — {r.subtitle}</span>}
               </span>
+              {r.keyHint ? (
+                <kbd>{r.keyHint}</kbd>
+              ) : (
+                <span className="hint">
+                  {r.source === "notion" ? "Notion" : r.hint}
+                </span>
+              )}
             </div>
           ))}
           {results.length === 0 && (
