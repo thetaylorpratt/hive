@@ -4,6 +4,8 @@ import { loadConfig } from "../lib/config";
 import { initNotion, notion } from "../lib/notionClient";
 import { enqueue } from "../lib/queue";
 import { fetchFresh, loadCached, normalizePageId } from "../lib/fetchPage";
+import { DEMO_PAGE_ID, demoBlocks, demoPage } from "../lib/demoPage";
+import { upsertPageCache } from "../lib/db";
 import type { PageData } from "../lib/types";
 
 export type AuthStatus = "checking" | "ready" | "missing-token" | "error";
@@ -20,6 +22,7 @@ interface AppState {
 
   init: () => Promise<void>;
   openPage: (input: string) => Promise<void>;
+  openDemo: () => Promise<void>;
   setView: (view: ViewMode) => void;
 }
 
@@ -32,12 +35,19 @@ export const useAppStore = create<AppState>((set, get) => ({
   pageError: null,
 
   init: async () => {
+    let config;
     try {
-      const config = await loadConfig();
-      if (!config.notion_token) {
-        set({ auth: { status: "missing-token" } });
-        return;
-      }
+      config = await loadConfig();
+    } catch {
+      // Config unreadable (or not running under Tauri) — same guidance applies.
+      set({ auth: { status: "missing-token" } });
+      return;
+    }
+    if (!config.notion_token) {
+      set({ auth: { status: "missing-token" } });
+      return;
+    }
+    try {
       initNotion(config.notion_token);
       const me = (await enqueue(() => notion().users.me({}))) as {
         name?: string;
@@ -85,6 +95,32 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({ pageStatus: "error", pageError: message });
       }
     }
+  },
+
+  openDemo: async () => {
+    // Exercises the real pipe minus Notion: write the fixture into SQLite,
+    // then serve it back cache-first, exactly like a revisited page.
+    try {
+      await upsertPageCache(DEMO_PAGE_ID, demoPage, demoBlocks);
+      const cached = await loadCached(DEMO_PAGE_ID);
+      if (cached) {
+        set({ pageId: DEMO_PAGE_ID, page: cached, pageStatus: "idle", pageError: null });
+        return;
+      }
+    } catch {
+      // SQLite unavailable (e.g. plain-browser dev) — fall through to memory.
+    }
+    set({
+      pageId: DEMO_PAGE_ID,
+      page: {
+        page: demoPage,
+        blocks: demoBlocks,
+        fetchedAt: new Date().toISOString(),
+        fromCache: false,
+      },
+      pageStatus: "idle",
+      pageError: null,
+    });
   },
 
   setView: (view: ViewMode) => {

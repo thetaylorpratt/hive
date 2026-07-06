@@ -66,11 +66,52 @@ function Notice({
   );
 }
 
+function DemoButton() {
+  const openDemo = useAppStore((s) => s.openDemo);
+  return (
+    <button
+      className="hive-btn hive-btn-secondary"
+      style={{ marginTop: "10px" }}
+      onClick={() => void openDemo()}
+    >
+      Load demo page
+    </button>
+  );
+}
+
 function Content() {
   const auth = useAppStore((s) => s.auth);
   const page = useAppStore((s) => s.page);
   const pageStatus = useAppStore((s) => s.pageStatus);
   const pageError = useAppStore((s) => s.pageError);
+
+  // A loaded page (including the demo fixture) always wins over auth notices.
+  if (page && pageStatus !== "error" && pageStatus !== "loading") {
+    const emoji = pageEmoji(page.page);
+    return (
+      <article className="hive-doc">
+        <h1 className="hive-page-title">
+          {emoji && <span style={{ marginRight: "0.35em" }}>{emoji}</span>}
+          {pageTitle(page.page)}
+        </h1>
+        <div
+          className="mb-4"
+          style={{ fontSize: "0.75rem", color: "var(--hive-color-fg-muted)" }}
+        >
+          {page.fromCache ? "served from cache" : "fresh from Notion"} · fetched{" "}
+          {new Date(page.fetchedAt).toLocaleString()}
+          {pageStatus === "refreshing" && " · refreshing…"}
+          {pageError && (
+            <span style={{ color: "var(--hive-color-critical-fg)" }}>
+              {" "}
+              · {pageError}
+            </span>
+          )}
+        </div>
+        <BlockList blocks={page.blocks} />
+      </article>
+    );
+  }
 
   if (auth.status === "missing-token") {
     return (
@@ -86,6 +127,8 @@ function Content() {
           Get an internal integration token at notion.so/my-integrations and
           share the pages you want with the integration, then relaunch Hive.
         </p>
+        <p>Meanwhile, the renderer and cache work without a token:</p>
+        <DemoButton />
       </Notice>
     );
   }
@@ -119,40 +162,14 @@ function Content() {
     );
   }
 
-  if (!page) {
-    return (
-      <Notice tone="neutral" title="Phase 1 — the pipe">
-        <p>
-          Paste a Notion page ID or URL above to render it. Pages are cached in
-          SQLite and served cache-first on the next open.
-        </p>
-      </Notice>
-    );
-  }
-
-  const emoji = pageEmoji(page.page);
   return (
-    <article className="hive-doc">
-      <h1 className="hive-page-title">
-        {emoji && <span style={{ marginRight: "0.35em" }}>{emoji}</span>}
-        {pageTitle(page.page)}
-      </h1>
-      <div
-        className="mb-4"
-        style={{ fontSize: "0.75rem", color: "var(--hive-color-fg-muted)" }}
-      >
-        {page.fromCache ? "served from cache" : "fresh from Notion"} · fetched{" "}
-        {new Date(page.fetchedAt).toLocaleString()}
-        {pageStatus === "refreshing" && " · refreshing…"}
-        {pageError && (
-          <span style={{ color: "var(--hive-color-critical-fg)" }}>
-            {" "}
-            · {pageError}
-          </span>
-        )}
-      </div>
-      <BlockList blocks={page.blocks} />
-    </article>
+    <Notice tone="neutral" title="Phase 1 — the pipe">
+      <p>
+        Paste a Notion page ID or URL above to render it. Pages are cached in
+        SQLite and served cache-first on the next open.
+      </p>
+      <DemoButton />
+    </Notice>
   );
 }
 
