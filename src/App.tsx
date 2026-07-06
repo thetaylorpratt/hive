@@ -2,26 +2,11 @@ import { useEffect } from "react";
 import { useAppStore } from "./store/appStore";
 import { Header } from "./components/Header";
 import { BlockList } from "./components/BlockRenderer";
-import type { RichTextItem } from "./lib/types";
-
-function pageTitle(page: Record<string, unknown>): string {
-  const properties = page.properties as
-    | Record<string, { type: string; title?: RichTextItem[] }>
-    | undefined;
-  if (properties) {
-    for (const prop of Object.values(properties)) {
-      if (prop.type === "title" && prop.title) {
-        return prop.title.map((t) => t.plain_text).join("") || "Untitled";
-      }
-    }
-  }
-  return "Untitled";
-}
-
-function pageEmoji(page: Record<string, unknown>): string | null {
-  const icon = page.icon as { type?: string; emoji?: string } | null;
-  return icon?.type === "emoji" && icon.emoji ? icon.emoji : null;
-}
+import { SpaceBar } from "./components/SpaceBar";
+import { Sidebar } from "./components/Sidebar";
+import { CommandBar } from "./components/CommandBar";
+import { installKeymap } from "./lib/keymap";
+import { pageEmoji, pageTitle } from "./lib/pageMeta";
 
 function Notice({
   tone,
@@ -163,10 +148,10 @@ function Content() {
   }
 
   return (
-    <Notice tone="neutral" title="Phase 1 — the pipe">
+    <Notice tone="neutral" title="Phase 2 — sidebar & Spaces">
       <p>
-        Paste a Notion page ID or URL above to render it. Pages are cached in
-        SQLite and served cache-first on the next open.
+        <kbd>⌘T</kbd> to search and open docs. Open docs land in Today, pin
+        what should persist, <kbd>⌃1–9</kbd> switches Spaces.
       </p>
       <DemoButton />
     </Notice>
@@ -175,16 +160,34 @@ function Content() {
 
 export default function App() {
   const init = useAppStore((s) => s.init);
+  const sidebarVisible = useAppStore((s) => s.sidebarVisible);
+
   useEffect(() => {
     void init();
   }, [init]);
 
+  useEffect(() => {
+    return installKeymap((action) => {
+      const s = useAppStore.getState();
+      if (action === "command-bar") s.setCommandBarOpen(!s.commandBarOpen);
+      else if (action === "toggle-sidebar") s.toggleSidebar();
+      else if (action.startsWith("switch-space-")) {
+        void s.switchSpaceByIndex(Number(action.slice("switch-space-".length)));
+      }
+    });
+  }, []);
+
   return (
-    <div className="flex h-full flex-col">
-      <Header />
-      <main className="flex-1 overflow-y-auto">
-        <Content />
-      </main>
+    <div className="flex h-full">
+      <SpaceBar />
+      {sidebarVisible && <Sidebar />}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <Header />
+        <main className="flex-1 overflow-y-auto">
+          <Content />
+        </main>
+      </div>
+      <CommandBar />
     </div>
   );
 }

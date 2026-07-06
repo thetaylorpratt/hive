@@ -56,18 +56,56 @@ async fn open_embed(app: tauri::AppHandle, url: String) -> Result<(), String> {
 pub fn run() {
     // Phase 1 creates only the content-plane cache. Org-plane tables
     // (space, sidebar_item, folder, ...) arrive as migration 2 in Phase 2.
-    let migrations = vec![Migration {
-        version: 1,
-        description: "create_page_cache",
-        sql: "CREATE TABLE IF NOT EXISTS page_cache (
-                notion_page_id TEXT PRIMARY KEY,
-                blocks_json TEXT NOT NULL,
-                properties_json TEXT NOT NULL,
-                fetched_at TEXT NOT NULL,
-                etag TEXT
-              );",
-        kind: MigrationKind::Up,
-    }];
+    let migrations = vec![
+        Migration {
+            version: 1,
+            description: "create_page_cache",
+            sql: "CREATE TABLE IF NOT EXISTS page_cache (
+                    notion_page_id TEXT PRIMARY KEY,
+                    blocks_json TEXT NOT NULL,
+                    properties_json TEXT NOT NULL,
+                    fetched_at TEXT NOT NULL,
+                    etag TEXT
+                  );",
+            kind: MigrationKind::Up,
+        },
+        // Phase 2: the organization plane (ARCHITECTURE.md §4).
+        // Local, private, mutable — never written to Notion.
+        Migration {
+            version: 2,
+            description: "create_org_plane",
+            sql: "CREATE TABLE IF NOT EXISTS space (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    color TEXT NOT NULL,
+                    theme TEXT,
+                    sort_order INTEGER NOT NULL,
+                    created_at TEXT NOT NULL
+                  );
+                  CREATE TABLE IF NOT EXISTS folder (
+                    id TEXT PRIMARY KEY,
+                    space_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    parent_folder_id TEXT,
+                    sort_order INTEGER NOT NULL
+                  );
+                  CREATE TABLE IF NOT EXISTS sidebar_item (
+                    id TEXT PRIMARY KEY,
+                    space_id TEXT,
+                    notion_page_id TEXT NOT NULL,
+                    tier TEXT NOT NULL,
+                    parent_folder_id TEXT,
+                    sort_order INTEGER NOT NULL,
+                    title_cache TEXT,
+                    icon_cache TEXT,
+                    last_opened_at TEXT,
+                    auto_archive_at TEXT
+                  );
+                  CREATE INDEX IF NOT EXISTS idx_sidebar_space
+                    ON sidebar_item(space_id, tier, sort_order);",
+            kind: MigrationKind::Up,
+        },
+    ];
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
