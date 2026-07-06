@@ -81,7 +81,11 @@ export function EditableText({
     }
   }, [focusBlockId, block.id, setFocusBlock]);
 
-  if (!canEdit) return <RichText items={items} />;
+  // Blocks with non-text runs (inline equations, mentions) keep the static
+  // renderer: the HTML round-trip would flatten them. Editing those blocks
+  // stays a native-Notion job in v1.
+  const hasExoticRuns = items.some((i) => i.type !== "text");
+  if (!canEdit || hasExoticRuns) return <RichText items={items} />;
 
   const commit = () => {
     const el = ref.current;
