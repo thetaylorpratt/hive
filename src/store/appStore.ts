@@ -10,11 +10,14 @@ import { blocksToPlainText, pageEmoji, pageTitle } from "../lib/pageMeta";
 import { indexPageForSearch } from "../lib/db";
 import { recordHit } from "../lib/frecencyDb";
 import {
+  clearPageDiff,
   computeUnread,
+  getPageDiffs,
   noteEditTime,
   primeAttention,
   startAttentionEngine,
 } from "../lib/attention";
+import type { PageDiff } from "../lib/blockDiff";
 import * as org from "../lib/orgDb";
 import * as writeback from "../lib/writeback";
 import type { Folder, SidebarItem, Space, Tier } from "../lib/orgDb";
@@ -50,6 +53,8 @@ interface AppState {
   mru: { pageId: string; title: string; icon: string | null }[];
   focusMode: boolean;
   toast: { message: string; undo?: () => Promise<void> } | null;
+  pageDiffs: Record<string, PageDiff>;
+  shortcutSheetOpen: boolean;
 
   init: () => Promise<void>;
   openPage: (input: string) => Promise<void>;
@@ -89,6 +94,8 @@ interface AppState {
   toggleFocusMode: () => void;
   showToast: (message: string, undo?: () => Promise<void>) => void;
   dismissToast: () => void;
+  dismissDiff: (pageId: string) => void;
+  setShortcutSheetOpen: (open: boolean) => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -110,6 +117,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   mru: [],
   focusMode: false,
   toast: null,
+  pageDiffs: {},
+  shortcutSheetOpen: false,
 
   init: async () => {
     // Organization plane boots regardless of Notion auth.
@@ -513,13 +522,20 @@ export const useAppStore = create<AppState>((set, get) => ({
         unreadBySpace[item.spaceId] = (unreadBySpace[item.spaceId] ?? 0) + 1;
       }
     }
-    set({ unreadPageIds: unread, unreadBySpace });
+    set({ unreadPageIds: unread, unreadBySpace, pageDiffs: getPageDiffs() });
     try {
       await invoke("set_badge", { count: unread.size });
     } catch {
       /* not running under Tauri */
     }
   },
+
+  dismissDiff: (pageId: string) => {
+    clearPageDiff(pageId);
+    set({ pageDiffs: getPageDiffs() });
+  },
+
+  setShortcutSheetOpen: (open: boolean) => set({ shortcutSheetOpen: open }),
 }));
 
 // Dev hook for driving the store from browser tooling.

@@ -959,6 +959,154 @@ body {
   font-size: 0.8rem;
 }
 
+/* ---- outline rail (right edge, hover to expand) ---- */
+
+.hive-outline {
+  position: sticky;
+  bottom: 40vh;
+  margin-left: auto;
+  margin-right: 8px;
+  width: 24px;
+  float: right;
+  display: flex;
+  justify-content: flex-end;
+  z-index: 40;
+}
+main > .hive-outline {
+  position: fixed;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  margin: 0;
+  float: none;
+}
+.hive-outline .ticks {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  align-items: flex-end;
+  padding: 6px 4px;
+}
+.hive-outline .tick {
+  height: 2px;
+  border-radius: 1px;
+  background: var(--hive-color-border);
+}
+.hive-outline .tick.l1 { width: 16px; }
+.hive-outline .tick.l2 { width: 11px; }
+.hive-outline .tick.l3 { width: 7px; }
+.hive-outline .panel {
+  display: none;
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  min-width: 180px;
+  max-width: 260px;
+  background: var(--hive-color-bg-surface);
+  border: 1px solid var(--hive-color-border-subtle);
+  border-radius: var(--hive-radius);
+  box-shadow: var(--hive-shadow-popover);
+  padding: 6px;
+}
+.hive-outline:hover .panel {
+  display: block;
+}
+.hive-outline .entry {
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  color: var(--hive-color-fg-secondary);
+  border-radius: var(--hive-radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hive-outline .entry:hover {
+  background: var(--hive-color-accent-subtle);
+  color: var(--hive-color-fg);
+}
+.hive-outline .entry.l2 { padding-left: 20px; }
+.hive-outline .entry.l3 { padding-left: 32px; }
+
+/* ---- changed-since-last-copy banner ---- */
+
+.hive-diff-banner {
+  background: var(--hive-color-accent-subtle);
+  border: 1px solid var(--hive-color-border-subtle);
+  border-radius: var(--hive-radius);
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  font-size: 0.8rem;
+  color: var(--hive-color-fg-secondary);
+}
+.hive-diff-banner .summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 500;
+  color: var(--hive-color-fg);
+}
+.hive-diff-banner .summary button {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--hive-color-fg-muted);
+  font-size: 1rem;
+}
+.hive-diff-banner ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+.hive-diff-banner li {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- shortcut sheet ---- */
+
+.hive-sheet {
+  width: min(640px, 92vw);
+  max-height: 76vh;
+  overflow-y: auto;
+  background: var(--hive-color-bg-surface);
+  border: 1px solid var(--hive-color-border-subtle);
+  border-radius: var(--hive-radius-lg);
+  box-shadow: var(--hive-shadow-popover);
+  padding: 18px 22px;
+}
+.hive-sheet-title {
+  font-weight: 600;
+  font-size: 1rem;
+  margin-bottom: 12px;
+}
+.hive-sheet-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 18px;
+}
+.hive-sheet-group {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--hive-color-fg-muted);
+  margin-bottom: 6px;
+}
+.hive-sheet-row {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 3px 0;
+  font-size: 0.8rem;
+  color: var(--hive-color-fg-secondary);
+}
+.hive-sheet-row kbd {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 /* ---- focus mode: dim everything but the block you're in ---- */
 
 .hive-doc.focus-mode > *:not(:focus-within):not(.hive-page-title) {

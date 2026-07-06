@@ -20,6 +20,23 @@ const MAX_PAGES_PER_CYCLE = 30; // ~10% of the token bucket over a cycle
 // Edit times live in page_cache when a row exists; this map covers the rest
 // of the session (and the plain-browser fallback).
 const editTimes = new Map<string, string>();
+
+// Block-level diffs recorded by revalidation (see lib/blockDiff.ts) —
+// session-scoped: "what changed since the copy you last had".
+import type { PageDiff } from "./blockDiff";
+const pageDiffs = new Map<string, PageDiff>();
+
+export function notePageDiff(pageId: string, diff: PageDiff | null) {
+  if (diff) pageDiffs.set(pageId, diff);
+}
+
+export function getPageDiffs(): Record<string, PageDiff> {
+  return Object.fromEntries(pageDiffs);
+}
+
+export function clearPageDiff(pageId: string) {
+  pageDiffs.delete(pageId);
+}
 let seeded = false;
 let timer: ReturnType<typeof setInterval> | null = null;
 

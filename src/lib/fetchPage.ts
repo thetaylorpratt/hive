@@ -32,6 +32,17 @@ export async function fetchFresh(pageId: string): Promise<PageData> {
     notion().pages.retrieve({ page_id: pageId }),
   )) as Record<string, unknown>;
   const blocks = await fetchBlockTree(pageId, 0);
+  // Record what changed vs. the copy we last had (feeds the unread UI).
+  try {
+    const previous = await getCachedPage(pageId);
+    if (previous) {
+      const { diffBlockTrees } = await import("./blockDiff");
+      const { notePageDiff } = await import("./attention");
+      notePageDiff(pageId, diffBlockTrees(previous.blocks, blocks));
+    }
+  } catch {
+    /* diffing is best-effort */
+  }
   await upsertPageCache(pageId, page, blocks);
   return { page, blocks, fetchedAt: new Date().toISOString(), fromCache: false };
 }

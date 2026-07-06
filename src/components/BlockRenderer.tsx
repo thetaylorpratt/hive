@@ -65,17 +65,17 @@ const TIER1: Record<string, BlockComponent> = {
   ),
 
   heading_1: ({ block }) => (
-    <h1>
+    <h1 id={`hb-${block.id}`}>
       <EditableText block={block} items={rich(block)} />
     </h1>
   ),
   heading_2: ({ block }) => (
-    <h2>
+    <h2 id={`hb-${block.id}`}>
       <EditableText block={block} items={rich(block)} />
     </h2>
   ),
   heading_3: ({ block }) => (
-    <h3>
+    <h3 id={`hb-${block.id}`}>
       <EditableText block={block} items={rich(block)} />
     </h3>
   ),

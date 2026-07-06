@@ -17,6 +17,7 @@ export const DEFAULT_BINDINGS: KeyBinding[] = [
   { combo: "meta+k", action: "command-bar" },
   { combo: "meta+\\", action: "toggle-sidebar" },
   { combo: "meta+shift+f", action: "focus-mode" },
+  { combo: "?", action: "shortcut-sheet" },
   ...Array.from({ length: 9 }, (_, i) => ({
     combo: `ctrl+${i + 1}`,
     action: `switch-space-${i + 1}`,
@@ -40,8 +41,21 @@ export function installKeymap(
 ): () => void {
   const byCombo = new Map(bindings.map((b) => [b.combo, b.action]));
   const onKeyDown = (e: KeyboardEvent) => {
-    const action = byCombo.get(comboOf(e));
+    const combo = comboOf(e);
+    const action = byCombo.get(combo);
     if (!action) return;
+    // Modifier-less bindings (like "?") must never fire while typing.
+    if (!combo.includes("meta+") && !combo.includes("ctrl+")) {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.isContentEditable ||
+          target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA")
+      ) {
+        return;
+      }
+    }
     e.preventDefault();
     dispatch(action);
   };

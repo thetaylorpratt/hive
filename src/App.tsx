@@ -6,6 +6,8 @@ import { Sidebar } from "./components/Sidebar";
 import { CommandBar } from "./components/CommandBar";
 import { MruSwitcher } from "./components/MruSwitcher";
 import { Toast } from "./components/Toast";
+import { OutlineRail } from "./components/OutlineRail";
+import { ShortcutSheet } from "./components/ShortcutSheet";
 import { installKeymap } from "./lib/keymap";
 import { blocksToPlainText, pageEmoji, pageTitle } from "./lib/pageMeta";
 
@@ -73,6 +75,9 @@ function Content() {
   const writeError = useAppStore((s) => s.writeError);
   const canEdit = useAppStore((s) => s.canEdit());
   const focusMode = useAppStore((s) => s.focusMode);
+  const pageId = useAppStore((s) => s.pageId);
+  const pageDiffs = useAppStore((s) => s.pageDiffs);
+  const dismissDiff = useAppStore((s) => s.dismissDiff);
 
   // A loaded page (including the demo fixture) always wins over auth notices.
   if (page && pageStatus !== "error" && pageStatus !== "loading") {
@@ -82,8 +87,30 @@ function Content() {
     )
       .split(/\s+/)
       .filter(Boolean).length;
+    const diff = pageId ? pageDiffs[pageId] : undefined;
     return (
       <article className={`hive-doc${focusMode ? " focus-mode" : ""}`}>
+        {diff && (
+          <div className="hive-diff-banner">
+            <div className="summary">
+              <span>
+                Changed since your last copy: {diff.added > 0 && `${diff.added} added`}
+                {diff.added > 0 && (diff.changed > 0 || diff.removed > 0) && " · "}
+                {diff.changed > 0 && `${diff.changed} edited`}
+                {diff.changed > 0 && diff.removed > 0 && " · "}
+                {diff.removed > 0 && `${diff.removed} removed`}
+              </span>
+              <button onClick={() => pageId && dismissDiff(pageId)}>×</button>
+            </div>
+            {diff.excerpts.length > 0 && (
+              <ul>
+                {diff.excerpts.map((x, i) => (
+                  <li key={i}>{x}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
         <h1 className="hive-page-title">
           {emoji && <span style={{ marginRight: "0.35em" }}>{emoji}</span>}
           {pageTitle(page.page)}
@@ -190,6 +217,8 @@ export default function App() {
       if (action === "command-bar") s.setCommandBarOpen(!s.commandBarOpen);
       else if (action === "toggle-sidebar") s.toggleSidebar();
       else if (action === "focus-mode") s.toggleFocusMode();
+      else if (action === "shortcut-sheet")
+        s.setShortcutSheetOpen(!s.shortcutSheetOpen);
       else if (action.startsWith("switch-space-")) {
         void s.switchSpaceByIndex(Number(action.slice("switch-space-".length)));
       }
@@ -201,13 +230,15 @@ export default function App() {
       {sidebarVisible && <Sidebar />}
       <div className="flex min-w-0 flex-1 flex-col">
         <Header />
-        <main className="flex-1 overflow-y-auto">
+        <main className="relative flex-1 overflow-y-auto">
           <Content />
+          <OutlineRail />
         </main>
       </div>
       <CommandBar />
       <MruSwitcher />
       <Toast />
+      <ShortcutSheet />
     </div>
   );
 }
