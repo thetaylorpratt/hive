@@ -138,8 +138,28 @@ const TIER1: Record<string, BlockComponent> = {
   },
 };
 
+function ChildPageCard({ block }: { block: HiveBlock }) {
+  const openPage = useAppStore((s) => s.openPage);
+  const title = (block.child_page as { title?: string })?.title || "Untitled";
+  // A child_page block's id IS the page id — open it in Hive directly.
+  return (
+    <div
+      className="hive-childpage"
+      role="link"
+      tabIndex={0}
+      onClick={() => void openPage(block.id)}
+      onKeyDown={(e) => e.key === "Enter" && void openPage(block.id)}
+    >
+      <span className="icon">📄</span>
+      <span className="title">{title}</span>
+      <span className="hint">sub-page</span>
+    </div>
+  );
+}
+
 /** Tier 2 — render-only (Phase 3). */
 const TIER2: Record<string, BlockComponent> = {
+  child_page: ({ block }) => <ChildPageCard block={block} />,
   image: ({ block }) => {
     const payload = block.image as {
       type?: string;

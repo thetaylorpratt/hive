@@ -10,7 +10,7 @@ import type { HiveBlock, RichTextItem } from "./types";
 export const DEMO_PAGE_ID = "00000000-0000-0000-0000-00000000demo";
 
 /** Bump when the fixture changes so cached (possibly edited) copies re-seed. */
-export const DEMO_VERSION = "3-editing";
+export const DEMO_VERSION = "4-childpage";
 
 function text(
   content: string,
@@ -217,4 +217,13 @@ export const demoBlocks: HiveBlock[] = [
   }),
   block("child_database", { title: "Roadmap (linked database)" }),
   block("synced_block", {}),
+  block("heading_3", { rich_text: [text("Sub-pages navigate in Hive")] }),
+  // Real child_page blocks carry the sub-page's UUID as their block id and
+  // open in Hive. The fixture points back at the demo page itself.
+  {
+    id: DEMO_PAGE_ID,
+    type: "child_page",
+    has_children: false,
+    child_page: { title: "A nested sub-page (opens in Hive)" },
+  },
 ];

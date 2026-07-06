@@ -177,7 +177,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     // Cache-first: render instantly from SQLite, then revalidate.
-    const cached = await loadCached(pageId);
+    let cached = null;
+    try {
+      cached = await loadCached(pageId);
+    } catch {
+      /* no SQLite (plain-browser dev) — proceed as a cache miss */
+    }
     set({
       pageId,
       page: cached,

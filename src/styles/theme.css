@@ -394,6 +394,32 @@ body {
   pointer-events: none;
 }
 
+.hive-childpage {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--hive-color-border-subtle);
+  border-radius: var(--hive-radius);
+  background: var(--hive-color-bg-surface);
+  padding: 8px 12px;
+  margin: 0.5em 0;
+  cursor: pointer;
+}
+.hive-childpage:hover {
+  border-color: var(--hive-color-accent);
+}
+.hive-childpage .title {
+  flex: 1;
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: var(--hive-color-border);
+  text-underline-offset: 3px;
+}
+.hive-childpage .hint {
+  font-size: 0.7rem;
+  color: var(--hive-color-fg-muted);
+}
+
 .hive-fallback {
   display: flex;
   align-items: center;
