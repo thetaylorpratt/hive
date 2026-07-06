@@ -9,6 +9,9 @@ import type { HiveBlock, RichTextItem } from "./types";
 
 export const DEMO_PAGE_ID = "00000000-0000-0000-0000-00000000demo";
 
+/** Bump when the fixture changes so cached (possibly edited) copies re-seed. */
+export const DEMO_VERSION = "3-editing";
+
 function text(
   content: string,
   overrides: Partial<RichTextItem["annotations"]> = {},

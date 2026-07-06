@@ -222,6 +222,23 @@ body {
   text-decoration: line-through;
 }
 
+/* ---- inline editor ---- */
+
+.hive-editable {
+  outline: none;
+  caret-color: var(--hive-color-accent);
+  min-height: 1.2em;
+  border-radius: var(--hive-radius-sm);
+}
+.hive-editable:empty::before {
+  content: attr(data-placeholder);
+  color: var(--hive-color-fg-muted);
+  pointer-events: none;
+}
+.hive-editable a {
+  pointer-events: none; /* editing surface: caret over links, no navigation */
+}
+
 /* ---- Tier 2 blocks ---- */
 
 .hive-image {

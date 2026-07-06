@@ -68,6 +68,8 @@ function Content() {
   const page = useAppStore((s) => s.page);
   const pageStatus = useAppStore((s) => s.pageStatus);
   const pageError = useAppStore((s) => s.pageError);
+  const writeError = useAppStore((s) => s.writeError);
+  const canEdit = useAppStore((s) => s.canEdit());
 
   // A loaded page (including the demo fixture) always wins over auth notices.
   if (page && pageStatus !== "error" && pageStatus !== "loading") {
@@ -85,10 +87,17 @@ function Content() {
           {page.fromCache ? "served from cache" : "fresh from Notion"} · fetched{" "}
           {new Date(page.fetchedAt).toLocaleString()}
           {pageStatus === "refreshing" && " · refreshing…"}
+          {canEdit ? " · editable" : " · read-only until token"}
           {pageError && (
             <span style={{ color: "var(--hive-color-critical-fg)" }}>
               {" "}
               · {pageError}
+            </span>
+          )}
+          {writeError && (
+            <span style={{ color: "var(--hive-color-critical-fg)" }}>
+              {" "}
+              · {writeError}
             </span>
           )}
         </div>

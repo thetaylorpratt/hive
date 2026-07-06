@@ -3,7 +3,9 @@ import katex from "katex";
 import "katex/dist/katex.min.css";
 import type { HiveBlock, RichTextItem } from "../lib/types";
 import { RichText } from "./RichText";
+import { EditableText } from "./EditableText";
 import { FallbackCard } from "./FallbackCard";
+import { useAppStore } from "../store/appStore";
 
 /**
  * Data-driven block renderer (ARCHITECTURE.md §5). One dispatch table keyed
@@ -28,12 +30,35 @@ function Children({ block }: { block: HiveBlock }) {
   );
 }
 
-/** Tier 1 — read-only in Phase 1. */
+function TodoBlock({ block }: { block: HiveBlock }) {
+  const toggleTodo = useAppStore((s) => s.toggleTodo);
+  const canEdit = useAppStore((s) => s.canEdit());
+  const payload = block.to_do as { checked?: boolean } | undefined;
+  const done = payload?.checked ?? false;
+  return (
+    <>
+      <div className={`hive-todo${done ? " done" : ""}`}>
+        <input
+          type="checkbox"
+          checked={done}
+          disabled={!canEdit}
+          onChange={(e) => void toggleTodo(block.id, e.target.checked)}
+        />
+        <span>
+          <EditableText block={block} items={rich(block)} />
+        </span>
+      </div>
+      <Children block={block} />
+    </>
+  );
+}
+
+/** Tier 1 — render + edit (write path v1: text-class blocks). */
 const TIER1: Record<string, BlockComponent> = {
   paragraph: ({ block }) => (
     <>
       <p>
-        <RichText items={rich(block)} />
+        <EditableText block={block} items={rich(block)} />
       </p>
       <Children block={block} />
     </>
@@ -41,52 +66,38 @@ const TIER1: Record<string, BlockComponent> = {
 
   heading_1: ({ block }) => (
     <h1>
-      <RichText items={rich(block)} />
+      <EditableText block={block} items={rich(block)} />
     </h1>
   ),
   heading_2: ({ block }) => (
     <h2>
-      <RichText items={rich(block)} />
+      <EditableText block={block} items={rich(block)} />
     </h2>
   ),
   heading_3: ({ block }) => (
     <h3>
-      <RichText items={rich(block)} />
+      <EditableText block={block} items={rich(block)} />
     </h3>
   ),
 
   bulleted_list_item: ({ block }) => (
     <li>
-      <RichText items={rich(block)} />
+      <EditableText block={block} items={rich(block)} />
       <Children block={block} />
     </li>
   ),
   numbered_list_item: ({ block }) => (
     <li>
-      <RichText items={rich(block)} />
+      <EditableText block={block} items={rich(block)} />
       <Children block={block} />
     </li>
   ),
 
-  to_do: ({ block }) => {
-    const payload = block.to_do as { checked?: boolean } | undefined;
-    const done = payload?.checked ?? false;
-    return (
-      <>
-        <div className={`hive-todo${done ? " done" : ""}`}>
-          <input type="checkbox" checked={done} disabled readOnly />
-          <span>
-            <RichText items={rich(block)} />
-          </span>
-        </div>
-        <Children block={block} />
-      </>
-    );
-  },
+  to_do: ({ block }) => <TodoBlock block={block} />,
 
   quote: ({ block }) => (
     <blockquote className="hive-quote">
-      <RichText items={rich(block)} />
+      <EditableText block={block} items={rich(block)} />
       <Children block={block} />
     </blockquote>
   ),
@@ -100,7 +111,7 @@ const TIER1: Record<string, BlockComponent> = {
       <div className="hive-callout">
         <span>{emoji}</span>
         <div>
-          <RichText items={rich(block)} />
+          <EditableText block={block} items={rich(block)} />
           <Children block={block} />
         </div>
       </div>

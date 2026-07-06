@@ -60,6 +60,18 @@ export async function upsertPageCache(
   );
 }
 
+/** Persist edited block tree without touching page properties (editor path). */
+export async function updateCachedBlocks(
+  pageId: string,
+  blocks: HiveBlock[],
+): Promise<void> {
+  const db = await getDb();
+  await db.execute(
+    "UPDATE page_cache SET blocks_json = $2, fetched_at = $3 WHERE notion_page_id = $1",
+    [pageId, JSON.stringify(blocks), new Date().toISOString()],
+  );
+}
+
 /** Change-detection metadata (Notifications Tier A). Update-if-cached. */
 export async function setPageEditTime(pageId: string, editedTime: string): Promise<void> {
   const db = await getDb();

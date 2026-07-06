@@ -4,7 +4,7 @@ import { loadConfig } from "../lib/config";
 import { initNotion, notion } from "../lib/notionClient";
 import { enqueue } from "../lib/queue";
 import { fetchFresh, loadCached, normalizePageId } from "../lib/fetchPage";
-import { DEMO_PAGE_ID, demoBlocks, demoPage } from "../lib/demoPage";
+import { DEMO_PAGE_ID, DEMO_VERSION, demoBlocks, demoPage } from "../lib/demoPage";
 import { upsertPageCache } from "../lib/db";
 import { pageEmoji, pageTitle } from "../lib/pageMeta";
 import { recordHit } from "../lib/frecencyDb";
@@ -15,8 +15,9 @@ import {
   startAttentionEngine,
 } from "../lib/attention";
 import * as org from "../lib/orgDb";
+import * as writeback from "../lib/writeback";
 import type { Folder, SidebarItem, Space, Tier } from "../lib/orgDb";
-import type { PageData } from "../lib/types";
+import type { PageData, RichTextItem } from "../lib/types";
 
 export type AuthStatus = "checking" | "ready" | "missing-token" | "error";
 export type PageStatus = "idle" | "loading" | "refreshing" | "error";
@@ -70,6 +71,16 @@ interface AppState {
   toggleSidebar: () => void;
   setCommandBarOpen: (open: boolean) => void;
   recomputeUnread: () => Promise<void>;
+
+  // editing (write path)
+  focusBlockId: string | null;
+  writeError: string | null;
+  canEdit: () => boolean;
+  editBlockText: (blockId: string, type: string, richText: RichTextItem[]) => Promise<void>;
+  toggleTodo: (blockId: string, checked: boolean) => Promise<void>;
+  insertParagraphAfter: (afterId: string) => Promise<void>;
+  deleteBlock: (blockId: string) => Promise<void>;
+  setFocusBlock: (blockId: string | null) => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -187,12 +198,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   openDemo: async () => {
-    // Exercises the real pipe minus Notion: write the fixture into SQLite,
-    // then serve it back cache-first, exactly like a revisited page.
+    // Exercises the real pipe minus Notion, cache-first — including your own
+    // edits, which persist in page_cache. Re-seed only on fixture upgrades.
     let data: PageData;
     try {
-      await upsertPageCache(DEMO_PAGE_ID, demoPage, demoBlocks);
-      data = (await loadCached(DEMO_PAGE_ID)) ?? {
+      const seeded = localStorage.getItem("hive-demo-version") === DEMO_VERSION;
+      let cached = seeded ? await loadCached(DEMO_PAGE_ID) : null;
+      if (!cached) {
+        await upsertPageCache(DEMO_PAGE_ID, demoPage, demoBlocks);
+        localStorage.setItem("hive-demo-version", DEMO_VERSION);
+        cached = await loadCached(DEMO_PAGE_ID);
+      }
+      data = cached ?? {
         page: demoPage,
         blocks: demoBlocks,
         fetchedAt: new Date().toISOString(),
@@ -319,6 +336,86 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   toggleSidebar: () => set({ sidebarVisible: !get().sidebarVisible }),
   setCommandBarOpen: (open: boolean) => set({ commandBarOpen: open }),
+
+  focusBlockId: null,
+  writeError: null,
+
+  /** Demo always editable (local echo); real pages need the token. */
+  canEdit: () => {
+    const { pageId, auth } = get();
+    if (!pageId) return false;
+    return pageId === DEMO_PAGE_ID || auth.status === "ready";
+  },
+
+  editBlockText: async (blockId, type, richText) => {
+    const { pageId, page, auth } = get();
+    if (!pageId || !page) return;
+    const sink = writeback.sinkFor(pageId, auth.status === "ready");
+    const result = await writeback.editBlockText(
+      pageId, page.blocks, blockId, type, richText, sink,
+    );
+    set({ page: { ...page, blocks: result.blocks }, writeError: null });
+    result.remote.catch((err) =>
+      set({ writeError: `Save failed: ${err instanceof Error ? err.message : err}` }),
+    );
+  },
+
+  toggleTodo: async (blockId, checked) => {
+    const { pageId, page, auth } = get();
+    if (!pageId || !page) return;
+    const sink = writeback.sinkFor(pageId, auth.status === "ready");
+    const result = await writeback.toggleTodo(
+      pageId, page.blocks, blockId, checked, sink,
+    );
+    set({ page: { ...page, blocks: result.blocks }, writeError: null });
+    result.remote.catch((err) =>
+      set({ writeError: `Save failed: ${err instanceof Error ? err.message : err}` }),
+    );
+  },
+
+  insertParagraphAfter: async (afterId) => {
+    const { pageId, page, auth } = get();
+    if (!pageId || !page) return;
+    const sink = writeback.sinkFor(pageId, auth.status === "ready");
+    const result = await writeback.insertParagraphAfter(
+      pageId, page.blocks, afterId, pageId, sink,
+    );
+    set({
+      page: { ...page, blocks: result.blocks },
+      focusBlockId: result.newBlockId,
+      writeError: null,
+    });
+    void result.remoteId
+      .then((realId) => {
+        if (!realId) return;
+        const current = get().page;
+        if (!current) return;
+        set({
+          page: {
+            ...current,
+            blocks: writeback.remapBlockId(current.blocks, result.newBlockId, realId),
+          },
+          focusBlockId:
+            get().focusBlockId === result.newBlockId ? realId : get().focusBlockId,
+        });
+      })
+      .catch((err) =>
+        set({ writeError: `Save failed: ${err instanceof Error ? err.message : err}` }),
+      );
+  },
+
+  deleteBlock: async (blockId) => {
+    const { pageId, page, auth } = get();
+    if (!pageId || !page) return;
+    const sink = writeback.sinkFor(pageId, auth.status === "ready");
+    const result = await writeback.deleteBlock(pageId, page.blocks, blockId, sink);
+    set({ page: { ...page, blocks: result.blocks }, writeError: null });
+    result.remote.catch((err) =>
+      set({ writeError: `Save failed: ${err instanceof Error ? err.message : err}` }),
+    );
+  },
+
+  setFocusBlock: (blockId) => set({ focusBlockId: blockId }),
 
   recomputeUnread: async () => {
     const watched = await org.listAllWatched();

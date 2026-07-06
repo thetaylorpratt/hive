@@ -191,6 +191,24 @@ the integration token exists, sample via the REST API directly — it returns
 exact block types (better validation data than MCP's markdown-inferred
 constructs). This feeds the Phase 3 Tier 2 scoping.
 
+## 6.6 Scope updates (2026-07-06, while waiting on the token)
+
+- **Phases 2 and 3 are built and verified** (sidebar/Spaces with Arc-style
+  bottom switcher + icons + trackpad swipe; full command bar with frecency
+  and app actions; Tier 2 rendering incl. KaTeX; attention-engine Tier A with
+  dots/badges/dock badge).
+- **Phase 5 editing pulled forward and built token-free**: contentEditable
+  Tier 1 blocks with a rich-text ⇄ HTML round-trip, optimistic writes into
+  page_cache, and a write-back layer routing `blocks.update` /
+  `children.append` (with `after`) / `blocks.delete` through the queue. Demo
+  page is fully editable (local sink); real pages become writable the moment
+  the token exists (notion sink) — same code path. Remaining Phase 5 work:
+  markdown autoformat, debounced write coalescing, conflict guard, and the
+  render-vs-embed ADR itself.
+- **Polish backlog established** from competitive research:
+  `docs/POLISH_OPPORTUNITIES.md` (FTS5 search, autoformat, contextual
+  palette actions, MRU switcher, block-diffs as the signature feature).
+
 ## 7. Immediate next steps
 
 *(updated 2026-07-06 — Phase 1 is built; repo is live at `thetaylorpratt/hive`)*
