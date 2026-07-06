@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import { useAppStore } from "./store/appStore";
 import { Header } from "./components/Header";
 import { BlockList } from "./components/BlockRenderer";
-import { SpaceBar } from "./components/SpaceBar";
 import { Sidebar } from "./components/Sidebar";
 import { CommandBar } from "./components/CommandBar";
 import { installKeymap } from "./lib/keymap";
@@ -179,7 +178,6 @@ export default function App() {
 
   return (
     <div className="flex h-full">
-      <SpaceBar />
       {sidebarVisible && <Sidebar />}
       <div className="flex min-w-0 flex-1 flex-col">
         <Header />

@@ -16,6 +16,7 @@ export interface Space {
   id: string;
   name: string;
   color: string; // accent key, see SPACE_ACCENTS in theme.css
+  icon: string | null; // emoji; falls back to the name's first letter
   sortOrder: number;
   createdAt: string;
 }
@@ -116,17 +117,20 @@ const itemFromRow = (r: ItemRow): SidebarItem => ({
 export async function listSpaces(): Promise<Space[]> {
   if ((await backend()) === "sql") {
     const rows = await db!.select<
-      { id: string; name: string; color: string; sort_order: number; created_at: string }[]
+      { id: string; name: string; color: string; icon: string | null; sort_order: number; created_at: string }[]
     >("SELECT * FROM space ORDER BY sort_order");
     return rows.map((r) => ({
       id: r.id,
       name: r.name,
       color: r.color,
+      icon: r.icon ?? null,
       sortOrder: r.sort_order,
       createdAt: r.created_at,
     }));
   }
-  return [...local!.spaces].sort((a, b) => a.sortOrder - b.sortOrder);
+  return [...local!.spaces]
+    .map((s) => ({ ...s, icon: s.icon ?? null }))
+    .sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
 export async function createSpace(name: string, color: string): Promise<Space> {
@@ -135,13 +139,14 @@ export async function createSpace(name: string, color: string): Promise<Space> {
     id: uuid(),
     name,
     color,
+    icon: null,
     sortOrder: existing.length,
     createdAt: now(),
   };
   if ((await backend()) === "sql") {
     await db!.execute(
-      "INSERT INTO space (id, name, color, sort_order, created_at) VALUES ($1, $2, $3, $4, $5)",
-      [space.id, space.name, space.color, space.sortOrder, space.createdAt],
+      "INSERT INTO space (id, name, color, icon, sort_order, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
+      [space.id, space.name, space.color, space.icon, space.sortOrder, space.createdAt],
     );
   } else {
     local!.spaces.push(space);
@@ -150,12 +155,21 @@ export async function createSpace(name: string, color: string): Promise<Space> {
   return space;
 }
 
-export async function renameSpace(id: string, name: string): Promise<void> {
+export async function updateSpace(
+  id: string,
+  patch: Partial<Pick<Space, "name" | "color" | "icon">>,
+): Promise<void> {
+  const entries = Object.entries(patch);
+  if (!entries.length) return;
   if ((await backend()) === "sql") {
-    await db!.execute("UPDATE space SET name = $1 WHERE id = $2", [name, id]);
+    const sets = entries.map(([k], i) => `${k} = $${i + 2}`).join(", ");
+    await db!.execute(`UPDATE space SET ${sets} WHERE id = $1`, [
+      id,
+      ...entries.map(([, v]) => v),
+    ]);
   } else {
     const s = local!.spaces.find((s) => s.id === id);
-    if (s) s.name = name;
+    if (s) Object.assign(s, patch);
     persistLocal();
   }
 }

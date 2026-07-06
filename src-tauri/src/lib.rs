@@ -105,6 +105,13 @@ pub fn run() {
                     ON sidebar_item(space_id, tier, sort_order);",
             kind: MigrationKind::Up,
         },
+        // Arc parity: Spaces get an assignable icon (emoji).
+        Migration {
+            version: 3,
+            description: "space_icon",
+            sql: "ALTER TABLE space ADD COLUMN icon TEXT;",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()

@@ -46,8 +46,12 @@ interface AppState {
   refreshSidebar: () => Promise<void>;
   switchSpace: (spaceId: string) => Promise<void>;
   switchSpaceByIndex: (index: number) => Promise<void>;
+  switchSpaceRelative: (delta: 1 | -1) => Promise<void>;
   createSpace: () => Promise<void>;
-  renameSpace: (spaceId: string, name: string) => Promise<void>;
+  updateSpace: (
+    spaceId: string,
+    patch: { name?: string; color?: string; icon?: string | null },
+  ) => Promise<void>;
   setItemTier: (itemId: string, tier: Tier) => Promise<void>;
   removeItem: (itemId: string) => Promise<void>;
   reorderTier: (tier: Tier, idsInOrder: string[]) => Promise<void>;
@@ -225,6 +229,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (space) await get().switchSpace(space.id);
   },
 
+  switchSpaceRelative: async (delta: 1 | -1) => {
+    const { spaces, activeSpaceId } = get();
+    if (spaces.length < 2) return;
+    const current = spaces.findIndex((s) => s.id === activeSpaceId);
+    const next = spaces[(current + delta + spaces.length) % spaces.length];
+    await get().switchSpace(next.id);
+  },
+
   createSpace: async () => {
     const { spaces } = get();
     const color = org.SPACE_ACCENTS[spaces.length % org.SPACE_ACCENTS.length];
@@ -233,15 +245,24 @@ export const useAppStore = create<AppState>((set, get) => ({
     await get().switchSpace(space.id);
   },
 
-  renameSpace: async (spaceId: string, name: string) => {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    await org.renameSpace(spaceId, trimmed);
-    set({
-      spaces: get().spaces.map((s) =>
-        s.id === spaceId ? { ...s, name: trimmed } : s,
-      ),
-    });
+  updateSpace: async (spaceId, patch) => {
+    const clean = { ...patch };
+    if (clean.name !== undefined) {
+      clean.name = clean.name.trim();
+      if (!clean.name) delete clean.name;
+    }
+    if (clean.icon !== undefined && clean.icon !== null) {
+      clean.icon = clean.icon.trim() || null;
+    }
+    if (Object.keys(clean).length === 0) return;
+    await org.updateSpace(spaceId, clean);
+    const spaces = get().spaces.map((s) =>
+      s.id === spaceId ? { ...s, ...clean } : s,
+    );
+    set({ spaces });
+    if (spaceId === get().activeSpaceId) {
+      applySpaceAccent(spaces.find((s) => s.id === spaceId));
+    }
   },
 
   setItemTier: async (itemId: string, tier: Tier) => {

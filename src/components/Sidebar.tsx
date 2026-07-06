@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { useAppStore } from "../store/appStore";
+import { SpaceSwitcher } from "./SpaceSwitcher";
 import type { SidebarItem, Tier } from "../lib/orgDb";
 
 /**
@@ -195,7 +196,7 @@ function FolderBlock({
 function SpaceName() {
   const spaces = useAppStore((s) => s.spaces);
   const activeSpaceId = useAppStore((s) => s.activeSpaceId);
-  const renameSpace = useAppStore((s) => s.renameSpace);
+  const updateSpace = useAppStore((s) => s.updateSpace);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const space = spaces.find((s) => s.id === activeSpaceId);
@@ -209,7 +210,7 @@ function SpaceName() {
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={() => {
-          void renameSpace(space.id, draft);
+          void updateSpace(space.id, { name: draft });
           setEditing(false);
         }}
         onKeyDown={(e) => {
@@ -228,9 +229,35 @@ function SpaceName() {
         setEditing(true);
       }}
     >
+      {space.icon && <span style={{ marginRight: "0.4em" }}>{space.icon}</span>}
       {space.name}
     </div>
   );
+}
+
+/** Two-finger horizontal trackpad swipe (wheel deltaX) switches Spaces. */
+const SWIPE_THRESHOLD = 90;
+const SWIPE_COOLDOWN_MS = 450;
+
+function useSwipeToSwitch() {
+  const switchSpaceRelative = useAppStore((s) => s.switchSpaceRelative);
+  const acc = useRef(0);
+  const cooldownUntil = useRef(0);
+  const lastEvent = useRef(0);
+
+  return (e: React.WheelEvent) => {
+    if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+    const now = Date.now();
+    if (now < cooldownUntil.current) return;
+    if (now - lastEvent.current > 250) acc.current = 0; // new gesture
+    lastEvent.current = now;
+    acc.current += e.deltaX;
+    if (Math.abs(acc.current) >= SWIPE_THRESHOLD) {
+      void switchSpaceRelative(acc.current > 0 ? 1 : -1);
+      acc.current = 0;
+      cooldownUntil.current = now + SWIPE_COOLDOWN_MS;
+    }
+  };
 }
 
 export function Sidebar() {
@@ -238,6 +265,22 @@ export function Sidebar() {
   const folders = useAppStore((s) => s.folders);
   const createFolder = useAppStore((s) => s.createFolder);
   const openPage = useAppStore((s) => s.openPage);
+  const spaces = useAppStore((s) => s.spaces);
+  const activeSpaceId = useAppStore((s) => s.activeSpaceId);
+  const onWheel = useSwipeToSwitch();
+
+  // Directional slide when the Space changes. Direction must only update on
+  // an actual index change — follow-up renders (sidebar refresh) would
+  // otherwise recompute it as "no change" and restart the wrong animation.
+  const activeIndex = spaces.findIndex((s) => s.id === activeSpaceId);
+  const prevIndex = useRef(activeIndex);
+  const dirRef = useRef("slide-left");
+  if (activeIndex !== prevIndex.current) {
+    dirRef.current =
+      activeIndex > prevIndex.current ? "slide-left" : "slide-right";
+    prevIndex.current = activeIndex;
+  }
+  const direction = dirRef.current;
 
   const favorites = sidebarItems.filter((i) => i.tier === "favorite");
   const pinnedLoose = sidebarItems.filter(
@@ -246,7 +289,11 @@ export function Sidebar() {
   const today = sidebarItems.filter((i) => i.tier === "today");
 
   return (
-    <aside className="hive-sidebar">
+    <aside className="hive-sidebar" onWheel={onWheel}>
+      <div
+        key={activeSpaceId ?? "none"}
+        className={`hive-space-pane ${direction}`}
+      >
       <SpaceName />
 
       {favorites.length > 0 && (
@@ -299,6 +346,8 @@ export function Sidebar() {
         </div>
         <TierList tier="today" items={today} emptyHint="open a doc to start" />
       </div>
+      </div>
+      <SpaceSwitcher />
     </aside>
   );
 }
