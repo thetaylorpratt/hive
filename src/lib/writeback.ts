@@ -201,6 +201,80 @@ export function remapBlockId(
   return mapTree(blocks, (b) => (b.id === fromId ? { ...b, id: toId } : b));
 }
 
+/** Fresh payload for a just-converted block type. */
+export function emptyPayload(type: string): Record<string, unknown> {
+  switch (type) {
+    case "to_do":
+      return { rich_text: [], checked: false };
+    case "callout":
+      return { rich_text: [], icon: { type: "emoji", emoji: "💡" } };
+    case "divider":
+      return {};
+    case "code":
+      return { rich_text: [], language: "plain text" };
+    default:
+      return { rich_text: [] };
+  }
+}
+
+/**
+ * Change a block's type (markdown autoformat / slash menu). The Notion API
+ * cannot convert types in place, so the notion sink appends a new block
+ * after the old one and deletes the old — `remoteId` resolves with the new
+ * block's real id for remapping. Caveat: the append targets the page as
+ * parent, so converting a block nested inside another block is local-sink
+ * accurate but remote-sink unsupported (kept top-level-only by the caller).
+ */
+export async function convertBlockType(
+  pageId: string,
+  blocks: HiveBlock[],
+  blockId: string,
+  newType: string,
+  richText: RichTextItem[],
+  sink: WriteSink,
+): Promise<WriteResult & { remoteId: Promise<string | null> }> {
+  const payload = { ...emptyPayload(newType), ...(newType !== "divider" ? { rich_text: richText } : {}) };
+  const next = mapTree(blocks, (b) => {
+    if (b.id !== blockId) return b;
+    const replaced: HiveBlock = {
+      id: b.id,
+      type: newType,
+      has_children: Boolean(b.children?.length),
+      ...(b.children ? { children: b.children } : {}),
+      [newType]: payload,
+    };
+    return replaced;
+  });
+  await persist(pageId, next);
+
+  const remoteId =
+    sink === "notion" && !blockId.startsWith("local-")
+      ? enqueue(() =>
+          notion().blocks.children.append({
+            block_id: pageId,
+            after: blockId,
+            children: [
+              {
+                [newType]: {
+                  ...payload,
+                  ...(newType !== "divider"
+                    ? { rich_text: toApiRichText(richText) }
+                    : {}),
+                },
+              } as never,
+            ],
+          }),
+        )
+          .then(async (resp) => {
+            await enqueue(() => notion().blocks.delete({ block_id: blockId }));
+            return (
+              (resp as { results?: { id?: string }[] }).results?.[0]?.id ?? null
+            );
+          })
+      : Promise.resolve(null);
+  return { blocks: next, remote: remoteId.then(() => undefined), remoteId };
+}
+
 export async function deleteBlock(
   pageId: string,
   blocks: HiveBlock[],

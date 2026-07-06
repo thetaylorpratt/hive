@@ -81,6 +81,7 @@ interface AppState {
   editBlockText: (blockId: string, type: string, richText: RichTextItem[]) => Promise<void>;
   toggleTodo: (blockId: string, checked: boolean) => Promise<void>;
   insertParagraphAfter: (afterId: string) => Promise<void>;
+  convertBlock: (blockId: string, newType: string) => Promise<void>;
   deleteBlock: (blockId: string) => Promise<void>;
   setFocusBlock: (blockId: string | null) => void;
 }
@@ -411,6 +412,35 @@ export const useAppStore = create<AppState>((set, get) => ({
           },
           focusBlockId:
             get().focusBlockId === result.newBlockId ? realId : get().focusBlockId,
+        });
+      })
+      .catch((err) =>
+        set({ writeError: `Save failed: ${err instanceof Error ? err.message : err}` }),
+      );
+  },
+
+  convertBlock: async (blockId, newType) => {
+    const { pageId, page, auth } = get();
+    if (!pageId || !page) return;
+    const sink = writeback.sinkFor(pageId, auth.status === "ready");
+    const result = await writeback.convertBlockType(
+      pageId, page.blocks, blockId, newType, [], sink,
+    );
+    set({
+      page: { ...page, blocks: result.blocks },
+      focusBlockId: newType === "divider" ? null : blockId,
+      writeError: null,
+    });
+    void result.remoteId
+      .then((realId) => {
+        if (!realId) return;
+        const current = get().page;
+        if (!current) return;
+        set({
+          page: {
+            ...current,
+            blocks: writeback.remapBlockId(current.blocks, blockId, realId),
+          },
         });
       })
       .catch((err) =>
