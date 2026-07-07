@@ -54,6 +54,27 @@ async fn open_embed(app: tauri::AppHandle, url: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Built-in Finicky: when Hive is the default browser, non-Notion links get
+/// forwarded to the real browser (config `fallbackBrowser`, default "Arc").
+#[tauri::command]
+fn forward_url(url: String) -> Result<(), String> {
+    let parsed = url.parse::<tauri::Url>().map_err(|e| e.to_string())?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err("only web URLs are forwarded".into());
+    }
+    let browser = std::env::var_os("HOME")
+        .map(|h| std::path::Path::new(&h).join(".hive").join("config.json"))
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+        .and_then(|j| j.get("fallbackBrowser").and_then(|v| v.as_str()).map(str::to_owned))
+        .unwrap_or_else(|| "Arc".to_string());
+    std::process::Command::new("open")
+        .args(["-a", &browser, url.as_str()])
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Unread-count badge on the macOS dock icon (Notifications Tier A).
 #[tauri::command]
 fn set_badge(app: tauri::AppHandle, count: i64) {
@@ -175,7 +196,12 @@ pub fn run() {
                 .add_migrations("sqlite:hive.db", migrations)
                 .build(),
         )
-        .invoke_handler(tauri::generate_handler![get_config, open_embed, set_badge])
+        .invoke_handler(tauri::generate_handler![
+            get_config,
+            open_embed,
+            set_badge,
+            forward_url
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

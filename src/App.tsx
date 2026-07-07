@@ -12,6 +12,8 @@ import { OutlineRail } from "./components/OutlineRail";
 import { ShortcutSheet } from "./components/ShortcutSheet";
 import { installKeymap } from "./lib/keymap";
 import { blocksToPlainText, pageEmoji, pageTitle } from "./lib/pageMeta";
+import { normalizePageId } from "./lib/fetchPage";
+import { invoke } from "@tauri-apps/api/core";
 
 function Notice({
   tone,
@@ -254,19 +256,31 @@ export default function App() {
     void init();
   }, [init]);
 
-  // hive:// deep links (e.g. from Finicky routing notion.so URLs here).
-  // The page id is a 32-hex run anywhere in the link, so both
-  // hive://open?target=<encoded notion url> and hive://page/<id> work.
+  // URL routing (built-in Finicky). Hive handles hive:// deep links AND —
+  // when set as the default browser — all http/https clicks: Notion pages
+  // open in Hive; every other link forwards to the fallback browser.
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     const handle = (urls: string[]) => {
       const s = useAppStore.getState();
-      for (const url of urls) {
-        void s.openPage(decodeURIComponent(url));
+      let openedInHive = false;
+      for (const raw of urls) {
+        const url = decodeURIComponent(raw);
+        const isHiveScheme = raw.startsWith("hive:");
+        const isNotionLink = /https?:\/\/[^/]*notion\.(so|com)\//i.test(url);
+        if ((isHiveScheme || isNotionLink) && normalizePageId(url)) {
+          void s.openPage(url);
+          openedInHive = true;
+        } else if (!isHiveScheme) {
+          // not ours — hand it to the real browser, don't steal focus
+          void invoke("forward_url", { url: raw }).catch(() => undefined);
+        }
       }
-      void import("@tauri-apps/api/window")
-        .then((w) => w.getCurrentWindow().setFocus())
-        .catch(() => undefined);
+      if (openedInHive) {
+        void import("@tauri-apps/api/window")
+          .then((w) => w.getCurrentWindow().setFocus())
+          .catch(() => undefined);
+      }
     };
     void import("@tauri-apps/plugin-deep-link")
       .then(async (dl) => {
