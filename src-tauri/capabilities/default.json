@@ -2,7 +2,9 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "opener:default",
@@ -11,7 +13,12 @@
     "sql:allow-select",
     {
       "identifier": "http:default",
-      "allow": [{ "url": "https://api.notion.com/*" }]
-    }
+      "allow": [
+        {
+          "url": "https://api.notion.com/*"
+        }
+      ]
+    },
+    "deep-link:default"
   ]
 }

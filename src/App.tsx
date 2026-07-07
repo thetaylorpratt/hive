@@ -254,6 +254,30 @@ export default function App() {
     void init();
   }, [init]);
 
+  // hive:// deep links (e.g. from Finicky routing notion.so URLs here).
+  // The page id is a 32-hex run anywhere in the link, so both
+  // hive://open?target=<encoded notion url> and hive://page/<id> work.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    const handle = (urls: string[]) => {
+      const s = useAppStore.getState();
+      for (const url of urls) {
+        void s.openPage(decodeURIComponent(url));
+      }
+      void import("@tauri-apps/api/window")
+        .then((w) => w.getCurrentWindow().setFocus())
+        .catch(() => undefined);
+    };
+    void import("@tauri-apps/plugin-deep-link")
+      .then(async (dl) => {
+        const initial = await dl.getCurrent().catch(() => null);
+        if (initial?.length) handle(initial);
+        unlisten = await dl.onOpenUrl(handle);
+      })
+      .catch(() => undefined); // plain-browser dev: no deep links
+    return () => unlisten?.();
+  }, []);
+
   useEffect(() => {
     return installKeymap((action) => {
       const s = useAppStore.getState();

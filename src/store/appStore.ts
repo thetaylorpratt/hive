@@ -33,6 +33,7 @@ let peekOpenTimer: ReturnType<typeof setTimeout>;
 let peekCloseTimer: ReturnType<typeof setTimeout>;
 let navSeq = 0;
 let initStarted = false;
+let lastStaleCheck = 0;
 
 /**
  * All block mutations run through this chain, one at a time, reading state
@@ -189,6 +190,7 @@ interface AppState {
   toggleFocusMode: () => void;
   showToast: (message: string, undo?: () => Promise<void>) => void;
   dismissToast: () => void;
+  refreshCurrentIfStale: () => Promise<void>;
   dismissDiff: (pageId: string) => void;
   setShortcutSheetOpen: (open: boolean) => void;
   requestPeek: (pageId: string, anchorY: number) => void;
@@ -236,6 +238,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       void org.archiveExpiredToday().then((n) => {
         if (n > 0) void get().refreshSidebar();
       });
+      void get().refreshCurrentIfStale();
     });
 
     // Content plane: Notion auth.
@@ -257,7 +260,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         name?: string;
       };
       set({ auth: { status: "ready", userName: me.name ?? "integration" } });
-      void startAttentionEngine(() => void get().recomputeUnread());
+      void startAttentionEngine(() => {
+        void get().recomputeUnread();
+        void get().refreshCurrentIfStale();
+      });
     } catch (err) {
       set({
         auth: {
@@ -738,6 +744,40 @@ export const useAppStore = create<AppState>((set, get) => ({
       await invoke("set_badge", { count: unread.size });
     } catch {
       /* not running under Tauri */
+    }
+  },
+
+  /**
+   * PRD §8 concurrent-edit guard: on window focus (and when the attention
+   * poller flags the open page), compare the remote last_edited_time to the
+   * loaded copy and pull fresh content if a teammate changed it. The diff
+   * engine turns the refetch into a "changed since your last copy" banner.
+   */
+  refreshCurrentIfStale: async () => {
+    const { pageId, page, auth, pageStatus } = get();
+    if (
+      !pageId || !page || pageId === DEMO_PAGE_ID ||
+      auth.status !== "ready" || pageStatus !== "idle"
+    ) {
+      return;
+    }
+    const now = Date.now();
+    if (now - lastStaleCheck < 30_000) return; // one probe per 30s max
+    lastStaleCheck = now;
+    try {
+      const remote = (await enqueue(() =>
+        notion().pages.retrieve({ page_id: pageId }),
+      )) as { last_edited_time?: string };
+      const loaded = page.page.last_edited_time as string | undefined;
+      if (
+        remote.last_edited_time && loaded &&
+        remote.last_edited_time > loaded &&
+        get().pageId === pageId
+      ) {
+        await get().openPage(pageId); // cache-first swap + diff banner
+      }
+    } catch {
+      /* staleness probe is best-effort */
     }
   },
 
