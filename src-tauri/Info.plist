@@ -2,9 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <!-- Registering http/https makes Hive eligible as the system default
-       browser (Finicky-style routing built in): Notion links open in Hive,
-       everything else forwards to the fallback browser. -->
+  <!-- Default-browser eligibility (built-in Finicky routing) needs BOTH:
+       http/https URL schemes AND a viewer claim on HTML documents. This
+       merge REPLACES the generated CFBundleURLTypes, so the hive:// deep-
+       link scheme must be re-declared here or it silently drops out. -->
   <key>CFBundleURLTypes</key>
   <array>
     <dict>
@@ -16,6 +17,30 @@
       <array>
         <string>http</string>
         <string>https</string>
+      </array>
+    </dict>
+    <dict>
+      <key>CFBundleTypeRole</key>
+      <string>Editor</string>
+      <key>CFBundleURLName</key>
+      <string>com.taylorpratt.hive hive</string>
+      <key>CFBundleURLSchemes</key>
+      <array>
+        <string>hive</string>
+      </array>
+    </dict>
+  </array>
+  <key>CFBundleDocumentTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleTypeRole</key>
+      <string>Viewer</string>
+      <key>CFBundleTypeName</key>
+      <string>HTML document</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>public.html</string>
+        <string>public.xhtml</string>
       </array>
     </dict>
   </array>
