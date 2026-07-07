@@ -23,6 +23,9 @@ export function richTextToHtml(items: RichTextItem[]): string {
       if (a?.italic) html = `<i>${html}</i>`;
       if (a?.underline) html = `<u>${html}</u>`;
       if (a?.strikethrough) html = `<s>${html}</s>`;
+      if (a?.color && a.color !== "default") {
+        html = `<span data-color="${escapeHtml(a.color)}">${html}</span>`;
+      }
       if (item.href) html = `<a href="${escapeHtml(item.href)}">${html}</a>`;
       return html;
     })
@@ -35,6 +38,7 @@ interface Flags {
   underline: boolean;
   strikethrough: boolean;
   code: boolean;
+  color: string;
   href: string | null;
 }
 
@@ -50,7 +54,7 @@ function makeItem(text: string, f: Flags): RichTextItem {
       strikethrough: f.strikethrough,
       underline: f.underline,
       code: f.code,
-      color: "default",
+      color: f.color,
     },
   } as RichTextItem;
 }
@@ -73,7 +77,8 @@ export function htmlToRichText(html: string): RichTextItem[] {
         last.annotations.italic === f.italic &&
         last.annotations.underline === f.underline &&
         last.annotations.strikethrough === f.strikethrough &&
-        last.annotations.code === f.code
+        last.annotations.code === f.code &&
+        last.annotations.color === f.color
       ) {
         const merged = last.plain_text + text;
         last.plain_text = merged;
@@ -93,6 +98,7 @@ export function htmlToRichText(html: string): RichTextItem[] {
     else if (tag === "s" || tag === "strike" || tag === "del") next.strikethrough = true;
     else if (tag === "code") next.code = true;
     else if (tag === "a") next.href = el.getAttribute("href");
+    else if (tag === "span" && el.dataset.color) next.color = el.dataset.color;
     else if (tag === "br") {
       items.push(makeItem("\n", f));
       return;
@@ -107,6 +113,7 @@ export function htmlToRichText(html: string): RichTextItem[] {
       underline: false,
       strikethrough: false,
       code: false,
+      color: "default",
       href: null,
     }),
   );

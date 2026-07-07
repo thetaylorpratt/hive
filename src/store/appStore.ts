@@ -32,6 +32,28 @@ const ACTIVE_SPACE_KEY = "hive-active-space";
 let peekOpenTimer: ReturnType<typeof setTimeout>;
 let peekCloseTimer: ReturnType<typeof setTimeout>;
 
+/** Shared optimistic-write plumbing for block mutations. */
+async function applyWrite(
+  get: () => AppState,
+  set: (partial: Partial<AppState>) => void,
+  op: (
+    pageId: string,
+    blocks: PageData["blocks"],
+    sink: writeback.WriteSink,
+  ) => Promise<{ blocks: PageData["blocks"]; remote: Promise<void> }>,
+) {
+  const { pageId, page, auth } = get();
+  if (!pageId || !page) return;
+  const sink = writeback.sinkFor(pageId, auth.status === "ready");
+  const result = await op(pageId, page.blocks, sink);
+  set({ page: { ...page, blocks: result.blocks }, writeError: null });
+  result.remote.catch((err) =>
+    set({
+      writeError: `Save failed: ${err instanceof Error ? err.message : err}`,
+    }),
+  );
+}
+
 function applySpaceAccent(space: Space | undefined) {
   document.documentElement.dataset.spaceAccent = space?.color ?? "sky";
 }
@@ -109,6 +131,13 @@ interface AppState {
   addTableRow: (tableId: string, afterRowId: string | null) => Promise<void>;
   setTableColumns: (tableId: string, delta: 1 | -1) => Promise<void>;
   duplicateBlock: (blockId: string) => Promise<void>;
+  updateTableSettings: (
+    tableId: string,
+    patch: { has_column_header?: boolean; has_row_header?: boolean },
+  ) => Promise<void>;
+  moveBlock: (blockId: string, direction: "up" | "down") => Promise<void>;
+  indentBlock: (blockId: string) => Promise<void>;
+  outdentBlock: (blockId: string) => Promise<void>;
   setFocusBlock: (blockId: string | null) => void;
   toggleFocusMode: () => void;
   showToast: (message: string, undo?: () => Promise<void>) => void;
@@ -621,6 +650,27 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ page: { ...page, blocks: result.blocks }, writeError: null });
     result.remote.catch((err) =>
       set({ writeError: `Save failed: ${err instanceof Error ? err.message : err}` }),
+    );
+  },
+
+  updateTableSettings: async (tableId, patch) => {
+    await applyWrite(get, set, (pageId, blocks, sink) =>
+      writeback.updateTableSettings(pageId, blocks, tableId, patch, sink),
+    );
+  },
+  moveBlock: async (blockId, direction) => {
+    await applyWrite(get, set, (pageId, blocks, sink) =>
+      writeback.moveBlock(pageId, blocks, blockId, direction, sink),
+    );
+  },
+  indentBlock: async (blockId) => {
+    await applyWrite(get, set, (pageId, blocks, sink) =>
+      writeback.indentBlock(pageId, blocks, blockId, sink),
+    );
+  },
+  outdentBlock: async (blockId) => {
+    await applyWrite(get, set, (pageId, blocks, sink) =>
+      writeback.outdentBlock(pageId, blocks, blockId, sink),
     );
   },
 

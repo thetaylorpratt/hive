@@ -481,6 +481,181 @@ export async function duplicateBlock(
   return { blocks: next, remote };
 }
 
+/** Toggle table header row/column — plain blocks.update, fully supported. */
+export async function updateTableSettings(
+  pageId: string,
+  blocks: HiveBlock[],
+  tableId: string,
+  patch: { has_column_header?: boolean; has_row_header?: boolean },
+  sink: WriteSink,
+): Promise<WriteResult> {
+  const next = mapTree(blocks, (b) =>
+    b.id === tableId ? { ...b, table: { ...(b.table as object), ...patch } } : b,
+  );
+  await persist(pageId, next);
+  const remote =
+    sink === "notion" && !tableId.startsWith("local-")
+      ? enqueue(() =>
+          notion().blocks.update({ block_id: tableId, table: patch } as never),
+        ).then(() => undefined)
+      : Promise.resolve();
+  return { blocks: next, remote };
+}
+
+/** Payload for recreating a text-class block elsewhere (recreate trick). */
+function apiPayloadFor(block: HiveBlock): Record<string, unknown> | null {
+  if (!EDITABLE_TYPES.has(block.type)) return null;
+  const payload = block[block.type] as { rich_text?: RichTextItem[]; checked?: boolean };
+  return {
+    [block.type]: {
+      ...(block.type === "to_do" ? { checked: payload?.checked ?? false } : {}),
+      rich_text: toApiRichText(payload?.rich_text ?? []),
+    },
+  };
+}
+
+/**
+ * Move a text-class block up/down among its top-level siblings via the
+ * recreate trick (the API cannot move blocks). Moving up recreates the
+ * sibling ABOVE after this block (so first-position moves work — append
+ * without `after` lands at the END, not the top). The recreated block's id
+ * changes → comments anchored to it orphan.
+ */
+export async function moveBlock(
+  pageId: string,
+  blocks: HiveBlock[],
+  blockId: string,
+  direction: "up" | "down",
+  sink: WriteSink,
+): Promise<WriteResult> {
+  const index = blocks.findIndex((b) => b.id === blockId);
+  if (index === -1) return { blocks, remote: Promise.resolve() }; // top-level only in v1
+  const swapWith = direction === "up" ? index - 1 : index + 1;
+  if (swapWith < 0 || swapWith >= blocks.length) {
+    return { blocks, remote: Promise.resolve() };
+  }
+  const next = [...blocks];
+  [next[index], next[swapWith]] = [next[swapWith], next[index]];
+  await persist(pageId, next);
+
+  // Recreate the block that logically moved DOWN, after its new predecessor.
+  const recreated = direction === "up" ? blocks[swapWith] : blocks[index];
+  const afterId = direction === "up" ? blockId : blocks[swapWith].id;
+  const payload = apiPayloadFor(recreated);
+  const remote =
+    sink === "notion" && payload && !recreated.id.startsWith("local-")
+      ? enqueue(() =>
+          notion().blocks.children.append({
+            block_id: pageId,
+            after: afterId,
+            children: [payload as never],
+          }),
+        ).then(async () => {
+          await enqueue(() => notion().blocks.delete({ block_id: recreated.id }));
+        })
+      : Promise.resolve();
+  return { blocks: next, remote };
+}
+
+/**
+ * Indent: re-home the block as the last child of its previous sibling.
+ * Outdent: lift a nested block to sit after its parent. Both use the
+ * recreate trick on the notion sink (id changes; children not carried).
+ */
+export async function indentBlock(
+  pageId: string,
+  blocks: HiveBlock[],
+  blockId: string,
+  sink: WriteSink,
+): Promise<WriteResult> {
+  const scan = (list: HiveBlock[]): { list: HiveBlock[]; i: number } | null => {
+    const i = list.findIndex((b) => b.id === blockId);
+    if (i !== -1) return { list, i };
+    for (const b of list) {
+      if (b.children) {
+        const r = scan(b.children);
+        if (r) return r;
+      }
+    }
+    return null;
+  };
+  const found = scan(blocks);
+  if (!found || found.i === 0) return { blocks, remote: Promise.resolve() };
+  const prev = found.list[found.i - 1];
+  const moving = found.list[found.i];
+  // Only types the API allows as parents (plain headings cannot nest).
+  const CAN_PARENT = new Set([
+    "paragraph", "bulleted_list_item", "numbered_list_item", "to_do",
+    "toggle", "quote", "callout",
+  ]);
+  if (!CAN_PARENT.has(prev.type) || moving.children?.length) {
+    return { blocks, remote: Promise.resolve() };
+  }
+  const next = mapTree(removeFromTree(blocks, blockId), (b) =>
+    b.id === prev.id
+      ? { ...b, has_children: true, children: [...(b.children ?? []), moving] }
+      : b,
+  );
+  await persist(pageId, next);
+
+  const payload = apiPayloadFor(moving);
+  const remote =
+    sink === "notion" && payload && !moving.id.startsWith("local-") && !prev.id.startsWith("local-")
+      ? enqueue(() =>
+          notion().blocks.children.append({
+            block_id: prev.id,
+            children: [payload as never],
+          }),
+        ).then(async () => {
+          await enqueue(() => notion().blocks.delete({ block_id: blockId }));
+        })
+      : Promise.resolve();
+  return { blocks: next, remote };
+}
+
+export async function outdentBlock(
+  pageId: string,
+  blocks: HiveBlock[],
+  blockId: string,
+  sink: WriteSink,
+): Promise<WriteResult> {
+  // find parent whose children contain blockId (top level = not outdentable)
+  let parent: HiveBlock | null = null;
+  const walk = (list: HiveBlock[]) => {
+    for (const b of list) {
+      if (b.children?.some((c) => c.id === blockId)) parent = b;
+      if (b.children) walk(b.children);
+    }
+  };
+  walk(blocks);
+  if (!parent) return { blocks, remote: Promise.resolve() };
+  const parentBlock: HiveBlock = parent;
+  const moving = parentBlock.children!.find((c) => c.id === blockId)!;
+
+  const stripped = mapTree(blocks, (b) =>
+    b.id === parentBlock.id
+      ? { ...b, children: b.children!.filter((c) => c.id !== blockId) }
+      : b,
+  );
+  const next = insertAfterInTree(stripped, parentBlock.id, moving);
+  await persist(pageId, next);
+
+  const payload = apiPayloadFor(moving);
+  const remote =
+    sink === "notion" && payload && !moving.id.startsWith("local-") && !parentBlock.id.startsWith("local-")
+      ? enqueue(() =>
+          notion().blocks.children.append({
+            block_id: pageId,
+            after: parentBlock.id,
+            children: [payload as never],
+          }),
+        ).then(async () => {
+          await enqueue(() => notion().blocks.delete({ block_id: blockId }));
+        })
+      : Promise.resolve();
+  return { blocks: next, remote };
+}
+
 /** Replace one cell of a table_row (API requires writing all cells). */
 export async function updateTableCell(
   pageId: string,

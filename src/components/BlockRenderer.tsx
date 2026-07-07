@@ -211,6 +211,7 @@ function SimpleTable({ block }: { block: HiveBlock }) {
   const canEdit = useAppStore((s) => s.canEdit());
   const addTableRow = useAppStore((s) => s.addTableRow);
   const setTableColumns = useAppStore((s) => s.setTableColumns);
+  const updateTableSettings = useAppStore((s) => s.updateTableSettings);
   const deleteBlock = useAppStore((s) => s.deleteBlock);
   const payload = block.table as {
     has_column_header?: boolean;
@@ -271,6 +272,26 @@ function SimpleTable({ block }: { block: HiveBlock }) {
             onClick={() => void setTableColumns(block.id, -1)}
           >
             − col
+          </button>
+          <button
+            className={payload?.has_column_header ? "on" : ""}
+            onClick={() =>
+              void updateTableSettings(block.id, {
+                has_column_header: !payload?.has_column_header,
+              })
+            }
+          >
+            header row
+          </button>
+          <button
+            className={payload?.has_row_header ? "on" : ""}
+            onClick={() =>
+              void updateTableSettings(block.id, {
+                has_row_header: !payload?.has_row_header,
+              })
+            }
+          >
+            header col
           </button>
         </div>
       )}

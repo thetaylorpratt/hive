@@ -80,6 +80,66 @@ const SLASH_OPTIONS: { label: string; type: string; keywords: string }[] = [
   { label: "Code", type: "code", keywords: "code snippet" },
 ];
 
+/** Notion's color palette for ⌘⇧H; `_background` variants highlight. */
+const COLOR_OPTIONS = [
+  "default", "gray", "brown", "orange", "yellow", "green", "blue", "purple",
+  "pink", "red", "yellow_background", "green_background", "blue_background",
+  "red_background",
+];
+
+function wrapSelection(makeEl: () => HTMLElement) {
+  const sel = window.getSelection();
+  if (!sel?.rangeCount || sel.isCollapsed) return false;
+  const range = sel.getRangeAt(0);
+  try {
+    range.surroundContents(makeEl());
+    sel.removeAllRanges();
+    return true;
+  } catch {
+    return false; // selection spans nodes — skip rather than corrupt
+  }
+}
+
+/** Inline markdown that converts on the closing character (Notion). */
+const INLINE_MD: { re: RegExp; tag: string }[] = [
+  { re: /\*\*([^*\n]+)\*\*$/, tag: "b" },
+  { re: /(?:^|[^*])\*([^*\n]+)\*$/, tag: "i" },
+  { re: /`([^`\n]+)`$/, tag: "code" },
+  { re: /~([^~\n]+)~$/, tag: "s" },
+];
+
+function tryInlineMarkdown(): boolean {
+  const sel = window.getSelection();
+  if (!sel?.rangeCount) return false;
+  const range = sel.getRangeAt(0);
+  if (!range.collapsed || range.startContainer.nodeType !== Node.TEXT_NODE) return false;
+  const node = range.startContainer as Text;
+  const text = node.textContent ?? "";
+  const upto = text.slice(0, range.startOffset);
+  for (const { re, tag } of INLINE_MD) {
+    const m = re.exec(upto);
+    if (!m) continue;
+    // the delimited region only ("*x*" — the italic regex may capture a lead char)
+    const delim = tag === "i" ? `*${m[1]}*` : m[0];
+    const start = range.startOffset - delim.length;
+    const el = document.createElement(tag);
+    el.textContent = m[1];
+    const tail = document.createTextNode(text.slice(range.startOffset));
+    node.textContent = text.slice(0, start);
+    const parent = node.parentNode;
+    if (!parent) return false;
+    parent.insertBefore(el, node.nextSibling);
+    parent.insertBefore(tail, el.nextSibling);
+    const newRange = document.createRange();
+    newRange.setStart(tail, 0);
+    newRange.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(newRange);
+    return true;
+  }
+  return false;
+}
+
 function wrapInlineCode() {
   const sel = window.getSelection();
   if (!sel?.rangeCount || sel.isCollapsed) return;
@@ -128,6 +188,49 @@ export function EditableText({
   const [slash, setSlash] = useState<{ filter: string; index: number } | null>(null);
   const [emojiMenu, setEmojiMenu] = useState<{ query: string; index: number } | null>(null);
   const emojiMatches = emojiMenu ? searchEmoji(emojiMenu.query) : [];
+  const [linkInput, setLinkInput] = useState(false);
+  const [colorMenu, setColorMenu] = useState(false);
+  const savedRange = useRef<Range | null>(null);
+
+  const saveSelection = () => {
+    const sel = window.getSelection();
+    if (sel?.rangeCount && !sel.isCollapsed) {
+      savedRange.current = sel.getRangeAt(0).cloneRange();
+      return true;
+    }
+    return false;
+  };
+  const restoreSelection = () => {
+    const sel = window.getSelection();
+    if (savedRange.current && sel) {
+      sel.removeAllRanges();
+      sel.addRange(savedRange.current);
+    }
+  };
+
+  const applyLink = (url: string) => {
+    setLinkInput(false);
+    restoreSelection();
+    if (url.trim()) document.execCommand("createLink", false, url.trim());
+    else document.execCommand("unlink");
+    ref.current?.focus();
+  };
+
+  const applyColor = (color: string) => {
+    setColorMenu(false);
+    restoreSelection();
+    if (color === "default") {
+      document.execCommand("removeFormat"); // strips spans; close enough for reset
+    } else {
+      wrapSelection(() => {
+        const span = document.createElement("span");
+        span.dataset.color = color;
+        return span;
+      });
+    }
+    localStorage.setItem("hive-last-color", color);
+    ref.current?.focus();
+  };
 
   const slashMatches = slash
     ? SLASH_OPTIONS.filter(
@@ -141,10 +244,13 @@ export function EditableText({
   // Fully uncontrolled contentEditable: React never renders its children —
   // all content writes happen here (including initial mount). Rendering via
   // dangerouslySetInnerHTML wiped in-progress typing whenever local state
-  // (slash/emoji menus) re-rendered the component.
+  // (slash/emoji menus) re-rendered the component. The dirty flag guards the
+  // other direction: never sync FROM the model while the DOM holds
+  // uncommitted edits (e.g. focus moved to the ⌘K popover before commit).
+  const dirty = useRef(false);
   useEffect(() => {
     const el = ref.current;
-    if (!el || document.activeElement === el) return;
+    if (!el || document.activeElement === el || dirty.current) return;
     const html = canonical(items);
     if (el.innerHTML !== html) el.innerHTML = html;
   });
@@ -166,6 +272,7 @@ export function EditableText({
   const commit = () => {
     const el = ref.current;
     if (!el) return;
+    dirty.current = false;
     const parsed = htmlToRichText(el.innerHTML);
     if (canonical(parsed) !== canonical(items)) {
       void editBlockText(block.id, block.type, parsed);
@@ -229,6 +336,22 @@ export function EditableText({
       if (k === "u" && !e.shiftKey) { e.preventDefault(); document.execCommand("underline"); return; }
       if (k === "s" && e.shiftKey) { e.preventDefault(); document.execCommand("strikeThrough"); return; }
       if (k === "e" && !e.shiftKey) { e.preventDefault(); wrapInlineCode(); return; }
+      if (k === "k" && !e.shiftKey) {
+        // ⌘K link input (only with a selection; otherwise the command bar owns ⌘K)
+        if (saveSelection()) {
+          e.preventDefault();
+          e.stopPropagation();
+          setLinkInput(true);
+        }
+        return;
+      }
+      if (k === "h" && e.shiftKey) {
+        e.preventDefault();
+        // Opens the palette (last-used color listed first). Slight deviation
+        // from Notion's instant re-apply, but never a dead end.
+        if (saveSelection()) setColorMenu(true);
+        return;
+      }
       if (k === "d" && !e.shiftKey) {
         e.preventDefault();
         commit();
@@ -302,6 +425,22 @@ export function EditableText({
       return;
     }
 
+    // Tab / ⇧Tab indent-outdent; ⌘⇧↑/↓ move block (recreate trick)
+    if (e.key === "Tab") {
+      e.preventDefault();
+      commit();
+      void (e.shiftKey
+        ? useAppStore.getState().outdentBlock(block.id)
+        : useAppStore.getState().indentBlock(block.id));
+      return;
+    }
+    if (e.metaKey && e.shiftKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+      e.preventDefault();
+      commit();
+      void useAppStore.getState().moveBlock(block.id, e.key === "ArrowUp" ? "up" : "down");
+      return;
+    }
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       // Notion: Enter on an empty list item exits the list (becomes text)
@@ -338,6 +477,9 @@ export function EditableText({
           }
         }}
         onInput={(e) => {
+          dirty.current = true;
+          // inline markdown converts on the closing character (Notion)
+          tryInlineMarkdown();
           // :emoji: completion (Notion shows the menu after 2+ chars)
           const ctx = emojiContext();
           setEmojiMenu(
@@ -360,6 +502,48 @@ export function EditableText({
           }
         }}
       />
+      {linkInput && (
+        <div className="hive-slash-menu hive-link-input">
+          <input
+            className="hive-input"
+            autoFocus
+            placeholder="Paste a link… (empty removes)"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") applyLink((e.target as HTMLInputElement).value);
+              if (e.key === "Escape") setLinkInput(false);
+              e.stopPropagation();
+            }}
+            onBlur={() => setLinkInput(false)}
+          />
+        </div>
+      )}
+      {colorMenu && (
+        <div className="hive-slash-menu">
+          {[
+            localStorage.getItem("hive-last-color"),
+            ...COLOR_OPTIONS,
+          ]
+            .filter((c, i, arr): c is string => Boolean(c) && arr.indexOf(c) === i)
+            .map((color) => (
+              <div
+                key={color}
+                className="hive-slash-row"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  applyColor(color);
+                }}
+              >
+                <span
+                  className="hive-color-dot"
+                  data-color={color === "default" ? undefined : color}
+                >
+                  A
+                </span>
+                {color.replace("_", " ")}
+              </div>
+            ))}
+        </div>
+      )}
       {emojiMenu && emojiMatches.length > 0 && (
         <div className="hive-slash-menu">
           {emojiMatches.map((m, i) => (

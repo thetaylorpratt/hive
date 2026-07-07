@@ -316,6 +316,41 @@ tr:hover .hive-row-gutter {
   border-color: var(--hive-color-accent);
 }
 
+/* colored text spans in the editor + color menu dots */
+[data-color="gray"] { color: var(--hive-color-fg-muted); }
+[data-color="brown"] { color: #8d6e63; }
+[data-color="orange"] { color: #d97706; }
+[data-color="yellow"] { color: var(--hive-color-warning-fg); }
+[data-color="green"] { color: var(--hive-color-success-fg); }
+[data-color="blue"] { color: var(--hive-color-accent); }
+[data-color="purple"] { color: #7e57c2; }
+[data-color="pink"] { color: #d81b60; }
+[data-color="red"] { color: var(--hive-color-critical-fg); }
+[data-color="yellow_background"] { background: var(--hive-color-warning-bg); border-radius: 2px; }
+[data-color="green_background"] { background: var(--hive-color-success-bg); border-radius: 2px; }
+[data-color="blue_background"] { background: var(--hive-color-accent-subtle); border-radius: 2px; }
+[data-color="red_background"] { background: var(--hive-color-critical-bg); border-radius: 2px; }
+
+.hive-color-dot {
+  display: inline-block;
+  width: 1.3em;
+  text-align: center;
+  margin-right: 0.5em;
+  font-weight: 600;
+  border-radius: var(--hive-radius-sm);
+}
+.hive-link-input {
+  padding: 6px;
+}
+.hive-link-input .hive-input {
+  width: 260px;
+}
+.hive-table-controls button.on {
+  color: var(--hive-color-accent);
+  border-color: var(--hive-color-accent);
+  border-style: solid;
+}
+
 .hive-cell-editable {
   outline: none;
   min-width: 48px;
