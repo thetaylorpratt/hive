@@ -64,6 +64,13 @@ fn set_badge(app: tauri::AppHandle, count: i64) {
 pub fn run() {
     // Phase 1 creates only the content-plane cache. Org-plane tables
     // (space, sidebar_item, folder, ...) arrive as migration 2 in Phase 2.
+    // IMPORTANT: one statement per migration. tauri-plugin-sql executes each
+    // migration's `sql` as a single prepared statement, so only the FIRST
+    // statement of a multi-statement string runs — the rest silently no-op
+    // and the migration chain effectively stalls. (Cost us a real bug: v2–v4
+    // were authored multi-statement and never applied on real SQLite; every
+    // verification had run against the localStorage fallback.) Keep these
+    // atomic and append-only; never edit an already-shipped migration's body.
     let migrations = vec![
         Migration {
             version: 1,
@@ -81,7 +88,7 @@ pub fn run() {
         // Local, private, mutable — never written to Notion.
         Migration {
             version: 2,
-            description: "create_org_plane",
+            description: "create_space",
             sql: "CREATE TABLE IF NOT EXISTS space (
                     id TEXT PRIMARY KEY,
                     name TEXT NOT NULL,
@@ -89,15 +96,25 @@ pub fn run() {
                     theme TEXT,
                     sort_order INTEGER NOT NULL,
                     created_at TEXT NOT NULL
-                  );
-                  CREATE TABLE IF NOT EXISTS folder (
+                  );",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 3,
+            description: "create_folder",
+            sql: "CREATE TABLE IF NOT EXISTS folder (
                     id TEXT PRIMARY KEY,
                     space_id TEXT NOT NULL,
                     name TEXT NOT NULL,
                     parent_folder_id TEXT,
                     sort_order INTEGER NOT NULL
-                  );
-                  CREATE TABLE IF NOT EXISTS sidebar_item (
+                  );",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 4,
+            description: "create_sidebar_item",
+            sql: "CREATE TABLE IF NOT EXISTS sidebar_item (
                     id TEXT PRIMARY KEY,
                     space_id TEXT,
                     notion_page_id TEXT NOT NULL,
@@ -108,22 +125,27 @@ pub fn run() {
                     icon_cache TEXT,
                     last_opened_at TEXT,
                     auto_archive_at TEXT
-                  );
-                  CREATE INDEX IF NOT EXISTS idx_sidebar_space
+                  );",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 5,
+            description: "index_sidebar_space",
+            sql: "CREATE INDEX IF NOT EXISTS idx_sidebar_space
                     ON sidebar_item(space_id, tier, sort_order);",
             kind: MigrationKind::Up,
         },
         // Arc parity: Spaces get an assignable icon (emoji).
         Migration {
-            version: 3,
+            version: 6,
             description: "space_icon",
             sql: "ALTER TABLE space ADD COLUMN icon TEXT;",
             kind: MigrationKind::Up,
         },
         // Phase 3: navigation intelligence + change detection.
         Migration {
-            version: 4,
-            description: "frecency_and_edit_times",
+            version: 7,
+            description: "create_frecency",
             sql: "CREATE TABLE IF NOT EXISTS frecency (
                     notion_page_id TEXT PRIMARY KEY,
                     hit_count INTEGER NOT NULL DEFAULT 0,
@@ -131,8 +153,13 @@ pub fn run() {
                     title_cache TEXT,
                     icon_cache TEXT,
                     score_cache REAL
-                  );
-                  ALTER TABLE page_cache ADD COLUMN last_edited_time TEXT;",
+                  );",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 8,
+            description: "page_cache_last_edited_time",
+            sql: "ALTER TABLE page_cache ADD COLUMN last_edited_time TEXT;",
             kind: MigrationKind::Up,
         },
     ];

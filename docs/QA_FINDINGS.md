@@ -70,3 +70,18 @@ Status markers updated as fixes land: [FIXED] / [OPEN] / [WONTFIX v1].
     mid-chord; stale switcher until next Ctrl release.
 25. [OPEN] Peek panel not closed by keyboard navigation (⌘T open, ⌘\\).
 26. [OPEN] `open_embed` accepts http:// (non-TLS) notion.so URLs.
+
+## Post-token-day addendum (2026-07-07, found on first real run)
+
+27. [FIXED] Migrations v2–v4 never applied on real SQLite — three stacked
+    causes: (a) multi-statement migration strings only execute their first
+    statement under tauri-plugin-sql; (b) refactoring re-indented v1's SQL
+    text, changing its sqlx checksum, so the migrator aborted every run
+    with VersionMismatch; (c) the long-lived tauri dev watcher had never
+    rebuilt the Rust binary (cargo check ≠ build), so earlier migration
+    code wasn't even in the running app. Fix: one statement per migration
+    (v1–v8), never edit an applied migration's text, DB reset on this
+    machine. Root lesson: all preview verification exercised the
+    localStorage fallback — SQLite paths need the real app.
+28. [FIXED] getDb() cached a rejected promise, permanently disabling
+    SQLite for the session after one failed load.

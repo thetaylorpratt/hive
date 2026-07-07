@@ -9,7 +9,12 @@ import type { HiveBlock, PageData } from "./types";
 let dbPromise: Promise<Database> | null = null;
 
 function getDb(): Promise<Database> {
-  dbPromise ??= Database.load("sqlite:hive.db");
+  // Don't cache a rejection: one failed load (e.g. a migration hiccup)
+  // would otherwise disable SQLite for the whole session.
+  dbPromise ??= Database.load("sqlite:hive.db").catch((err) => {
+    dbPromise = null;
+    throw err;
+  });
   return dbPromise;
 }
 
