@@ -6,6 +6,8 @@ import { Sidebar } from "./components/Sidebar";
 import { CommandBar } from "./components/CommandBar";
 import { MruSwitcher } from "./components/MruSwitcher";
 import { Toast } from "./components/Toast";
+import { PropertiesHeader } from "./components/PropertiesHeader";
+import { PeekLayer } from "./components/PeekLayer";
 import { OutlineRail } from "./components/OutlineRail";
 import { ShortcutSheet } from "./components/ShortcutSheet";
 import { installKeymap } from "./lib/keymap";
@@ -89,7 +91,10 @@ function Content() {
       .filter(Boolean).length;
     const diff = pageId ? pageDiffs[pageId] : undefined;
     return (
-      <article className={`hive-doc${focusMode ? " focus-mode" : ""}`}>
+      <article
+        key={pageId}
+        className={`hive-doc hive-page-in${focusMode ? " focus-mode" : ""}`}
+      >
         {diff && (
           <div className="hive-diff-banner">
             <div className="summary">
@@ -115,6 +120,7 @@ function Content() {
           {emoji && <span style={{ marginRight: "0.35em" }}>{emoji}</span>}
           {pageTitle(page.page)}
         </h1>
+        <PropertiesHeader page={page.page} />
         <div
           className="mb-4"
           style={{ fontSize: "0.75rem", color: "var(--hive-color-fg-muted)" }}
@@ -239,6 +245,7 @@ export default function App() {
       <MruSwitcher />
       <Toast />
       <ShortcutSheet />
+      <PeekLayer />
     </div>
   );
 }

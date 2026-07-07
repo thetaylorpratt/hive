@@ -394,6 +394,92 @@ body {
   pointer-events: none;
 }
 
+/* ---- page-in transition (Craft) ---- */
+
+.hive-page-in {
+  animation: hive-page-in 160ms ease-out;
+}
+@keyframes hive-page-in {
+  from { transform: translateY(8px); opacity: 0.3; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* ---- peek (Arc hover preview) ---- */
+
+.hive-peek {
+  position: fixed;
+  z-index: 900;
+  width: min(440px, 46vw);
+  max-height: 440px;
+  overflow: hidden;
+  background: var(--hive-color-bg-surface);
+  border: 1px solid var(--hive-color-border-subtle);
+  border-radius: var(--hive-radius-lg);
+  box-shadow: var(--hive-shadow-popover);
+  padding: 16px 18px 0;
+  cursor: pointer;
+  animation: hive-page-in 140ms ease-out;
+}
+.hive-peek-title {
+  font-weight: 600;
+  font-size: 1.05rem;
+  margin-bottom: 8px;
+}
+.hive-peek-body {
+  font-size: 0.8rem;
+  max-height: 380px;
+  overflow: hidden;
+}
+.hive-peek-body .hive-editable {
+  pointer-events: none; /* peek is read-only; click promotes to open */
+}
+.hive-peek-fade {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  background: linear-gradient(transparent, var(--hive-color-bg-surface));
+  pointer-events: none;
+}
+.hive-peek-miss {
+  padding: 20px 4px 24px;
+  color: var(--hive-color-fg-muted);
+  font-size: 0.8rem;
+}
+
+/* ---- database-row properties header ---- */
+
+.hive-props {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 16px;
+  margin: 0 0 20px;
+  padding: 10px 0;
+  border-top: 1px solid var(--hive-color-border-subtle);
+  border-bottom: 1px solid var(--hive-color-border-subtle);
+  font-size: 0.8rem;
+}
+.hive-props .label {
+  color: var(--hive-color-fg-muted);
+}
+.hive-props .value {
+  color: var(--hive-color-fg-secondary);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+.hive-prop {
+  display: contents;
+}
+.hive-prop-chip {
+  border-radius: var(--hive-radius-sm);
+  padding: 1px 8px;
+  font-size: 0.75rem;
+  color: var(--hive-color-fg);
+}
+
 .hive-childpage {
   display: flex;
   align-items: center;

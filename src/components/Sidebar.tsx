@@ -20,6 +20,9 @@ function ItemRow({ item }: { item: SidebarItem }) {
   const removeItem = useAppStore((s) => s.removeItem);
   const currentPageId = useAppStore((s) => s.pageId);
   const unread = useAppStore((s) => s.unreadPageIds.has(item.notionPageId));
+  const requestPeek = useAppStore((s) => s.requestPeek);
+  const releasePeek = useAppStore((s) => s.releasePeek);
+  const closePeek = useAppStore((s) => s.closePeek);
   const active = currentPageId === item.notionPageId;
 
   return (
@@ -27,10 +30,18 @@ function ItemRow({ item }: { item: SidebarItem }) {
       className={`hive-side-row${active ? " active" : ""}`}
       draggable
       onDragStart={(e) => {
+        closePeek();
         e.dataTransfer.setData(DRAG_MIME, item.id);
         e.dataTransfer.effectAllowed = "move";
       }}
-      onClick={() => void openPage(item.notionPageId)}
+      onClick={() => {
+        closePeek();
+        void openPage(item.notionPageId);
+      }}
+      onMouseEnter={(e) =>
+        requestPeek(item.notionPageId, e.currentTarget.getBoundingClientRect().top)
+      }
+      onMouseLeave={releasePeek}
       title={item.titleCache}
     >
       <span className="icon">{item.iconCache ?? "📄"}</span>

@@ -10,7 +10,7 @@ import type { HiveBlock, RichTextItem } from "./types";
 export const DEMO_PAGE_ID = "00000000-0000-0000-0000-00000000demo";
 
 /** Bump when the fixture changes so cached (possibly edited) copies re-seed. */
-export const DEMO_VERSION = "4-childpage";
+export const DEMO_VERSION = "5-properties";
 
 function text(
   content: string,
@@ -58,6 +58,19 @@ export const demoPage: Record<string, unknown> = {
       type: "title",
       title: [text("Hive demo page — the Phase 1 pipe, sans token")],
     },
+    // Database-row properties (BLOCK_INVENTORY gap #1) — real pages that are
+    // DB rows render these in the header exactly like this.
+    Status: { type: "status", status: { name: "In progress", color: "blue" } },
+    Tags: {
+      type: "multi_select",
+      multi_select: [
+        { name: "hackweek", color: "purple" },
+        { name: "design", color: "green" },
+      ],
+    },
+    Owner: { type: "people", people: [{ name: "Taylor Pratt" }] },
+    Due: { type: "date", date: { start: "2026-07-18" } },
+    Priority: { type: "select", select: { name: "P1", color: "red" } },
   },
 };
 

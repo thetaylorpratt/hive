@@ -29,6 +29,9 @@ export type ViewMode = "native" | "embed";
 
 const ACTIVE_SPACE_KEY = "hive-active-space";
 
+let peekOpenTimer: ReturnType<typeof setTimeout>;
+let peekCloseTimer: ReturnType<typeof setTimeout>;
+
 function applySpaceAccent(space: Space | undefined) {
   document.documentElement.dataset.spaceAccent = space?.color ?? "sky";
 }
@@ -56,6 +59,7 @@ interface AppState {
   toast: { message: string; undo?: () => Promise<void> } | null;
   pageDiffs: Record<string, PageDiff>;
   shortcutSheetOpen: boolean;
+  peek: { pageId: string; anchorY: number } | null;
 
   init: () => Promise<void>;
   openPage: (input: string) => Promise<void>;
@@ -98,6 +102,10 @@ interface AppState {
   dismissToast: () => void;
   dismissDiff: (pageId: string) => void;
   setShortcutSheetOpen: (open: boolean) => void;
+  requestPeek: (pageId: string, anchorY: number) => void;
+  releasePeek: () => void;
+  holdPeek: () => void;
+  closePeek: () => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -122,6 +130,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   toast: null,
   pageDiffs: {},
   shortcutSheetOpen: false,
+  peek: null,
 
   init: async () => {
     // Organization plane boots regardless of Notion auth.
@@ -550,6 +559,25 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setShortcutSheetOpen: (open: boolean) => set({ shortcutSheetOpen: open }),
+
+  // Peek (Arc's hover preview): 400ms intent delay to open, 250ms grace to
+  // travel from the row into the panel before it closes.
+  requestPeek: (pageId: string, anchorY: number) => {
+    clearTimeout(peekOpenTimer);
+    clearTimeout(peekCloseTimer);
+    peekOpenTimer = setTimeout(() => set({ peek: { pageId, anchorY } }), 400);
+  },
+  releasePeek: () => {
+    clearTimeout(peekOpenTimer);
+    clearTimeout(peekCloseTimer);
+    peekCloseTimer = setTimeout(() => set({ peek: null }), 250);
+  },
+  holdPeek: () => clearTimeout(peekCloseTimer),
+  closePeek: () => {
+    clearTimeout(peekOpenTimer);
+    clearTimeout(peekCloseTimer);
+    set({ peek: null });
+  },
 }));
 
 // Dev hook for driving the store from browser tooling.

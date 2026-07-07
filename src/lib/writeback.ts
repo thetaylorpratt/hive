@@ -94,6 +94,53 @@ export interface WriteResult {
   remote: Promise<void>;
 }
 
+/**
+ * Per-block write coalescing: rapid edits to the same block collapse into a
+ * single blocks.update carrying the latest payload (protects the ~3 req/s
+ * budget during fast editing — POLISH_OPPORTUNITIES sync refinements).
+ */
+const COALESCE_MS = 1200;
+const pendingTextWrites = new Map<
+  string,
+  {
+    timer: ReturnType<typeof setTimeout>;
+    payload: { type: string; richText: RichTextItem[] };
+    waiters: { resolve: () => void; reject: (e: unknown) => void }[];
+  }
+>();
+
+function scheduleTextWrite(
+  blockId: string,
+  type: string,
+  richText: RichTextItem[],
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const existing = pendingTextWrites.get(blockId);
+    if (existing) clearTimeout(existing.timer);
+    const waiters = existing?.waiters ?? [];
+    waiters.push({ resolve, reject });
+    const entry = {
+      payload: { type, richText },
+      waiters,
+      timer: setTimeout(() => {
+        pendingTextWrites.delete(blockId);
+        enqueue(() =>
+          notion().blocks.update({
+            block_id: blockId,
+            [entry.payload.type]: {
+              rich_text: toApiRichText(entry.payload.richText),
+            },
+          } as never),
+        ).then(
+          () => entry.waiters.forEach((w) => w.resolve()),
+          (err) => entry.waiters.forEach((w) => w.reject(err)),
+        );
+      }, COALESCE_MS),
+    };
+    pendingTextWrites.set(blockId, entry);
+  });
+}
+
 export async function editBlockText(
   pageId: string,
   blocks: HiveBlock[],
@@ -113,12 +160,7 @@ export async function editBlockText(
   await persist(pageId, next);
   const remote =
     sink === "notion"
-      ? enqueue(() =>
-          notion().blocks.update({
-            block_id: blockId,
-            [type]: { rich_text: toApiRichText(richText) },
-          } as never),
-        ).then(() => undefined)
+      ? scheduleTextWrite(blockId, type, richText)
       : Promise.resolve();
   return { blocks: next, remote };
 }

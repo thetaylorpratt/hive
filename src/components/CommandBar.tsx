@@ -26,6 +26,30 @@ interface Result {
   run?: () => void;
 }
 
+/**
+ * Raycast-style aliases: strict-prefix match, always ranked first —
+ * predictability over cleverness. Stored locally, keyed to a page.
+ */
+interface Alias {
+  pageId: string;
+  title: string;
+  icon: string | null;
+}
+
+function getAliases(): Record<string, Alias> {
+  try {
+    return JSON.parse(localStorage.getItem("hive-aliases") ?? "{}");
+  } catch {
+    return {};
+  }
+}
+
+function saveAlias(word: string, alias: Alias) {
+  const all = getAliases();
+  all[word.toLowerCase()] = alias;
+  localStorage.setItem("hive-aliases", JSON.stringify(all));
+}
+
 /** Cheap subsequence fuzzy score: higher is better, null = no match. */
 function fuzzyScore(query: string, target: string): number | null {
   const q = query.toLowerCase();
@@ -187,6 +211,52 @@ export function CommandBar() {
 
   const results = useMemo<Result[]>(() => {
     const scored: { result: Result; score: number }[] = [];
+    const q = query.trim().toLowerCase();
+
+    // Aliases first: strict prefix, deterministic, huge score.
+    if (q) {
+      for (const [word, alias] of Object.entries(getAliases())) {
+        if (word.startsWith(q)) {
+          scored.push({
+            score: 10_000,
+            result: {
+              key: `alias-${word}`,
+              pageId: alias.pageId,
+              title: alias.title,
+              icon: alias.icon,
+              source: "sidebar",
+              hint: `alias: ${word}`,
+            },
+          });
+        }
+      }
+    }
+
+    // "alias xyz" while a doc is open → setter action.
+    const aliasMatch = /^alias\s+(\S+)$/.exec(q);
+    const state = useAppStore.getState();
+    if (aliasMatch && state.pageId && state.page) {
+      const word = aliasMatch[1];
+      scored.push({
+        score: 20_000,
+        result: {
+          key: "action-set-alias",
+          title: `Set alias “${word}” for current doc`,
+          icon: "🔖",
+          source: "action",
+          hint: "action",
+          run: () => {
+            const s = useAppStore.getState();
+            saveAlias(word, {
+              pageId: s.pageId!,
+              title: s.page ? pageTitle(s.page.page) : "Untitled",
+              icon: s.page ? pageEmoji(s.page.page) : null,
+            });
+            s.showToast(`“${word}” now opens this doc`);
+          },
+        },
+      });
+    }
 
     for (const item of sidebarItems) {
       const score = fuzzyScore(query, item.titleCache);
