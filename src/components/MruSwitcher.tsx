@@ -36,11 +36,14 @@ export function MruSwitcher() {
         return null;
       });
     };
+    const onWindowBlur = () => setIndex(null); // app-switch mid-chord
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onWindowBlur);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onWindowBlur);
     };
   }, [openPage]);
 

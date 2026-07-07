@@ -36,8 +36,10 @@ async fn open_embed(app: tauri::AppHandle, url: String) -> Result<(), String> {
     let parsed = url
         .parse::<tauri::Url>()
         .map_err(|e| e.to_string())?;
-    if !matches!(parsed.host_str(), Some("www.notion.so") | Some("notion.so")) {
-        return Err("embed window only accepts notion.so URLs".into());
+    if parsed.scheme() != "https"
+        || !matches!(parsed.host_str(), Some("www.notion.so") | Some("notion.so"))
+    {
+        return Err("embed window only accepts https notion.so URLs".into());
     }
     if let Some(existing) = app.get_webview_window("embed") {
         existing.navigate(parsed).map_err(|e| e.to_string())?;

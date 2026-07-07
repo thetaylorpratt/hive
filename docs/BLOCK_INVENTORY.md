@@ -72,3 +72,14 @@ workspace) lead with a metadata table and often contain ownership tables.
 
 **Non-issues:** toggles, equations, embeds, bookmarks, and synced blocks did not appear
 in the sample; their current tiers are safe defaults.
+
+
+## REST-exact addendum (2026-07-07, first token run)
+
+Sampled everything the integration can currently see (2 pages: the Hackweek
+PRD + its sub-page). Exact top-level counts: bulleted_list_item 25,
+heading_2 8, paragraph 7, heading_3 2, quote 1, child_page 1 — 100% covered
+by Tier 1 + the navigable child-page card. Sample is too small to be
+representative: rerun after connecting teamspaces to the integration
+(connections inherit down the tree, so a few teamspace-level connects
+unlock the real corpus).

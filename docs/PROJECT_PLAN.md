@@ -211,12 +211,18 @@ constructs). This feeds the Phase 3 Tier 2 scoping.
 
 ## 7. Immediate next steps
 
-*(updated 2026-07-06 — Phase 1 is built; repo is live at `thetaylorpratt/hive`)*
+*(updated 2026-07-07 — TOKEN LIVE: pipe verified end-to-end, including an
+edit round-trip Hive→Notion and refresh-on-focus Notion→Hive. Phases 0–3
+plus the editing write path, editor parity, deep links, and a 20-bug QA
+pass are complete. Hive.app is installed in /Applications.)*
 
-1. Phase 0 pre-flight: **waiting on a Honeycomb workspace admin** to approve
-   the internal integration. When the token arrives: `~/.hive/config.json` →
-   `{ "notionToken": "ntn_..." }`, relaunch, paste a page URL to verify the
-   pipe end-to-end.
-2. Run the block-type inventory (§6.5) once API access exists.
-3. Daily-drive reading + fill in `SPIKE_NOTES.md`, then start Phase 2
-   (sidebar + Spaces — buildable without the token if IT drags).
+1. **Connect teamspaces to the integration** (teamspace settings →
+   Connections → "Notion Hackweek App") — connections inherit down, and
+   both live search quality and the block inventory depend on breadth.
+2. Rerun the block inventory (§6.5) over the real corpus; decide database-
+   view promotion with that data.
+3. Daily-drive for a week; fill in `SPIKE_NOTES.md`; make the
+   render-vs-embed ADR (§6.6).
+4. Phase 4 proper: split view + comments/mentions triage inbox (Tier B),
+   plus hover prefetch and the remaining token-gated parity items
+   (@mentions, [[ page links, ⌘⌥9).

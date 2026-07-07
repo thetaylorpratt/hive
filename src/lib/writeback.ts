@@ -116,6 +116,11 @@ export function cancelPendingTextWrite(blockId: string) {
   pendingLocalText.delete(blockId);
 }
 
+/** Any coalesced or buffered text writes still unsent? */
+export function hasPendingTextWrites(): boolean {
+  return pendingTextWrites.size > 0 || pendingLocalText.size > 0;
+}
+
 /** After an id remap, send any text buffered under the old local id. */
 export function flushPendingLocalText(fromId: string, toId: string) {
   const buffered = pendingLocalText.get(fromId);

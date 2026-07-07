@@ -497,7 +497,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     await get().refreshSidebar();
   },
 
-  toggleSidebar: () => set({ sidebarVisible: !get().sidebarVisible }),
+  toggleSidebar: () => {
+    get().closePeek();
+    set({ sidebarVisible: !get().sidebarVisible });
+  },
 
   setSidebarWidth: (width: number) => {
     const clamped = Math.min(400, Math.max(180, Math.round(width)));
@@ -761,6 +764,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     ) {
       return;
     }
+    if (writeback.hasPendingTextWrites()) return; // don't clobber unsent edits
     const now = Date.now();
     if (now - lastStaleCheck < 30_000) return; // one probe per 30s max
     lastStaleCheck = now;

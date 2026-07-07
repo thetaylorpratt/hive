@@ -61,15 +61,14 @@ Status markers updated as fixes land: [FIXED] / [OPEN] / [WONTFIX v1].
 21. [OPEN] Queue retry re-enters at tail → two writes to the same block can
     apply out of order after a transient 5xx (rare; needs per-block
     ordering keys).
-22. [OPEN] fetchFresh can clobber optimistic cache if revalidation lands
-    inside the 1.2s coalesce window (self-edit reverts until next commit).
+22. [MITIGATED] stale-refresh now skips while text writes are pending;
+    remaining exposure is only the explicit reopen-during-coalesce path.
 23. [OPEN] ⌘K immediately after typing in the same block may no-op (saved
     selection detaches when the pre-popover commit rewrites the DOM);
     guarded so it degrades to nothing rather than corrupting.
-24. [OPEN] MruSwitcher misses Ctrl-keyup if the window loses focus
-    mid-chord; stale switcher until next Ctrl release.
-25. [OPEN] Peek panel not closed by keyboard navigation (⌘T open, ⌘\\).
-26. [OPEN] `open_embed` accepts http:// (non-TLS) notion.so URLs.
+24. [FIXED] MruSwitcher resets on window blur.
+25. [FIXED] Peek closes on navigation (QA batch) and on sidebar toggle.
+26. [FIXED] open_embed requires https.
 
 ## Post-token-day addendum (2026-07-07, found on first real run)
 
