@@ -68,10 +68,13 @@ async function backend(): Promise<"sql" | "local"> {
     db = await Database.load("sqlite:hive.db");
     return "sql";
   } catch {
-    const raw = localStorage.getItem("hive-org");
-    local = raw
-      ? (JSON.parse(raw) as OrgSnapshot)
-      : { spaces: [], items: [], folders: [] };
+    try {
+      const raw = localStorage.getItem("hive-org");
+      local = raw ? (JSON.parse(raw) as OrgSnapshot) : null;
+    } catch {
+      local = null; // corrupt snapshot: reset rather than brick the org UX
+    }
+    local ??= { spaces: [], items: [], folders: [] };
     return "local";
   }
 }

@@ -152,6 +152,8 @@ export function CommandBar() {
   const [cached, setCached] = useState<SearchHit[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const queryRef = useRef("");
+  queryRef.current = query;
 
   useEffect(() => {
     if (open) {
@@ -182,6 +184,7 @@ export function CommandBar() {
       return;
     }
     clearTimeout(debounceRef.current);
+    const issuedFor = query;
     debounceRef.current = setTimeout(() => {
       void (async () => {
         try {
@@ -192,6 +195,7 @@ export function CommandBar() {
               filter: { property: "object", value: "page" },
             }),
           )) as { results: Record<string, unknown>[] };
+          if (queryRef.current !== issuedFor) return; // stale response
           setRemote(
             resp.results.map((p) => ({
               key: `notion-${p.id as string}`,

@@ -31,8 +31,27 @@ const ACTIVE_SPACE_KEY = "hive-active-space";
 
 let peekOpenTimer: ReturnType<typeof setTimeout>;
 let peekCloseTimer: ReturnType<typeof setTimeout>;
+let navSeq = 0;
+let initStarted = false;
 
-/** Shared optimistic-write plumbing for block mutations. */
+/**
+ * All block mutations run through this chain, one at a time, reading state
+ * fresh inside — two rapid mutations otherwise snapshot the same pre-edit
+ * tree and the second silently erases the first (QA finding #5).
+ */
+let writeChain: Promise<unknown> = Promise.resolve();
+export function chainWrite<T>(fn: () => Promise<T>): Promise<T> {
+  const run = writeChain.then(fn, fn);
+  writeChain = run.catch(() => undefined);
+  return run;
+}
+
+/** Ask the focused editor (if any) to commit before a structural change. */
+function requestCommit(blockId: string) {
+  window.dispatchEvent(new CustomEvent("hive-commit-block", { detail: blockId }));
+}
+
+/** Shared optimistic-write plumbing for block mutations (serialized). */
 async function applyWrite(
   get: () => AppState,
   set: (partial: Partial<AppState>) => void,
@@ -40,18 +59,46 @@ async function applyWrite(
     pageId: string,
     blocks: PageData["blocks"],
     sink: writeback.WriteSink,
-  ) => Promise<{ blocks: PageData["blocks"]; remote: Promise<void> }>,
+  ) => Promise<{
+    blocks: PageData["blocks"];
+    remote: Promise<void>;
+    remap?: Promise<writeback.RemapResult>;
+  }>,
 ) {
-  const { pageId, page, auth } = get();
-  if (!pageId || !page) return;
-  const sink = writeback.sinkFor(pageId, auth.status === "ready");
-  const result = await op(pageId, page.blocks, sink);
-  set({ page: { ...page, blocks: result.blocks }, writeError: null });
-  result.remote.catch((err) =>
-    set({
-      writeError: `Save failed: ${err instanceof Error ? err.message : err}`,
-    }),
-  );
+  return chainWrite(async () => {
+    const { pageId, page, auth } = get();
+    if (!pageId || !page) return;
+    const sink = writeback.sinkFor(pageId, auth.status === "ready");
+    const result = await op(pageId, page.blocks, sink);
+    if (get().pageId !== pageId) return; // navigated away mid-write
+    set({ page: { ...page, blocks: result.blocks }, writeError: null });
+    result.remote.catch((err) =>
+      set({
+        writeError: `Save failed: ${err instanceof Error ? err.message : err}`,
+      }),
+    );
+    // Recreate-trick ops give the block a new remote id: remap the local
+    // tree and flush any buffered text once it settles.
+    if (result.remap) {
+      void result.remap
+        .then((mapping) => {
+          if (!mapping?.to) return;
+          requestCommit(mapping.from);
+          return chainWrite(async () => {
+            const current = get();
+            if (current.pageId !== pageId || !current.page) return;
+            writeback.flushPendingLocalText(mapping.from, mapping.to!);
+            set({
+              page: {
+                ...current.page,
+                blocks: writeback.remapBlockId(current.page.blocks, mapping.from, mapping.to!),
+              },
+            });
+          });
+        })
+        .catch(() => undefined);
+    }
+  });
 }
 
 function applySpaceAccent(space: Space | undefined) {
@@ -175,6 +222,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   peek: null,
 
   init: async () => {
+    if (initStarted) return; // StrictMode double-invoke / re-mount guard
+    initStarted = true;
     // Organization plane boots regardless of Notion auth.
     const spaces = await org.ensureDefaultSpace();
     const savedId = localStorage.getItem(ACTIVE_SPACE_KEY);
@@ -221,6 +270,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   openPage: async (input: string) => {
     if (input === DEMO_PAGE_ID) return get().openDemo();
+    const nav = ++navSeq;
     const pageId = normalizePageId(input);
     if (!pageId) {
       set({ pageStatus: "error", pageError: "That doesn't look like a Notion page ID or URL." });
@@ -234,12 +284,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch {
       /* no SQLite (plain-browser dev) — proceed as a cache miss */
     }
+    if (navSeq !== nav) return; // a newer navigation superseded this one
     set({
       pageId,
       page: cached,
       pageStatus: cached ? "refreshing" : "loading",
       pageError: null,
+      focusBlockId: null,
+      writeError: null,
     });
+    get().closePeek();
     if (cached) await get().recordOpen(pageId, cached);
 
     try {
@@ -288,6 +342,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   openDemo: async () => {
+    const nav = ++navSeq;
     // Exercises the real pipe minus Notion, cache-first — including your own
     // edits, which persist in page_cache. Re-seed only on fixture upgrades.
     let data: PageData;
@@ -314,7 +369,12 @@ export const useAppStore = create<AppState>((set, get) => ({
         fromCache: false,
       };
     }
-    set({ pageId: DEMO_PAGE_ID, page: data, pageStatus: "idle", pageError: null });
+    if (navSeq !== nav) return; // user navigated elsewhere while we loaded
+    set({
+      pageId: DEMO_PAGE_ID, page: data, pageStatus: "idle", pageError: null,
+      focusBlockId: null, writeError: null,
+    });
+    get().closePeek();
     await get().recordOpen(DEMO_PAGE_ID, data);
   },
 
@@ -451,97 +511,99 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   editBlockText: async (blockId, type, richText) => {
-    const { pageId, page, auth } = get();
-    if (!pageId || !page) return;
-    const sink = writeback.sinkFor(pageId, auth.status === "ready");
-    const result = await writeback.editBlockText(
-      pageId, page.blocks, blockId, type, richText, sink,
-    );
-    set({ page: { ...page, blocks: result.blocks }, writeError: null });
-    result.remote.catch((err) =>
-      set({ writeError: `Save failed: ${err instanceof Error ? err.message : err}` }),
+    await applyWrite(get, set, (pageId, blocks, sink) =>
+      writeback.editBlockText(pageId, blocks, blockId, type, richText, sink),
     );
   },
 
   toggleTodo: async (blockId, checked) => {
-    const { pageId, page, auth } = get();
-    if (!pageId || !page) return;
-    const sink = writeback.sinkFor(pageId, auth.status === "ready");
-    const result = await writeback.toggleTodo(
-      pageId, page.blocks, blockId, checked, sink,
-    );
-    set({ page: { ...page, blocks: result.blocks }, writeError: null });
-    result.remote.catch((err) =>
-      set({ writeError: `Save failed: ${err instanceof Error ? err.message : err}` }),
+    await applyWrite(get, set, (pageId, blocks, sink) =>
+      writeback.toggleTodo(pageId, blocks, blockId, checked, sink),
     );
   },
 
   insertParagraphAfter: async (afterId) => {
-    const { pageId, page, auth } = get();
-    if (!pageId || !page) return;
-    const sink = writeback.sinkFor(pageId, auth.status === "ready");
-    const result = await writeback.insertParagraphAfter(
-      pageId, page.blocks, afterId, pageId, sink,
-    );
-    set({
-      page: { ...page, blocks: result.blocks },
-      focusBlockId: result.newBlockId,
-      writeError: null,
-    });
-    void result.remoteId
-      .then((realId) => {
-        if (!realId) return;
-        const current = get().page;
-        if (!current) return;
-        set({
-          page: {
-            ...current,
-            blocks: writeback.remapBlockId(current.blocks, result.newBlockId, realId),
-          },
-          focusBlockId:
-            get().focusBlockId === result.newBlockId ? realId : get().focusBlockId,
-        });
-      })
-      .catch((err) =>
-        set({ writeError: `Save failed: ${err instanceof Error ? err.message : err}` }),
+    await chainWrite(async () => {
+      const { pageId, page, auth } = get();
+      if (!pageId || !page) return;
+      const sink = writeback.sinkFor(pageId, auth.status === "ready");
+      const result = await writeback.insertParagraphAfter(
+        pageId, page.blocks, afterId, pageId, sink,
       );
+      if (get().pageId !== pageId) return;
+      set({
+        page: { ...page, blocks: result.blocks },
+        focusBlockId: result.newBlockId,
+        writeError: null,
+      });
+      void result.remoteId
+        .then((realId) => {
+          if (!realId) return;
+          requestCommit(result.newBlockId);
+          return chainWrite(async () => {
+            const current = get();
+            if (current.pageId !== pageId || !current.page) return;
+            writeback.flushPendingLocalText(result.newBlockId, realId);
+            set({
+              page: {
+                ...current.page,
+                blocks: writeback.remapBlockId(current.page.blocks, result.newBlockId, realId),
+              },
+              focusBlockId:
+                get().focusBlockId === result.newBlockId ? realId : get().focusBlockId,
+            });
+          });
+        })
+        .catch((err) =>
+          set({ writeError: `Save failed: ${err instanceof Error ? err.message : err}` }),
+        );
+    });
   },
 
   convertBlock: async (blockId, newType, richText = []) => {
-    const { pageId, page, auth } = get();
-    if (!pageId || !page) return;
-    const sink = writeback.sinkFor(pageId, auth.status === "ready");
-    const result = await writeback.convertBlockType(
-      pageId, page.blocks, blockId, newType, richText, sink,
-    );
-    set({
-      page: { ...page, blocks: result.blocks },
-      focusBlockId: newType === "divider" ? null : blockId,
-      writeError: null,
-    });
-    void result.remoteId
-      .then((realId) => {
-        if (!realId) return;
-        const current = get().page;
-        if (!current) return;
-        set({
-          page: {
-            ...current,
-            blocks: writeback.remapBlockId(current.blocks, blockId, realId),
-          },
-        });
-      })
-      .catch((err) =>
-        set({ writeError: `Save failed: ${err instanceof Error ? err.message : err}` }),
+    await chainWrite(async () => {
+      const { pageId, page, auth } = get();
+      if (!pageId || !page) return;
+      const sink = writeback.sinkFor(pageId, auth.status === "ready");
+      const result = await writeback.convertBlockType(
+        pageId, page.blocks, blockId, newType, richText, sink,
       );
+      if (get().pageId !== pageId) return;
+      set({
+        page: { ...page, blocks: result.blocks },
+        focusBlockId: newType === "divider" ? null : blockId,
+        writeError: null,
+      });
+      void result.remoteId
+        .then((realId) => {
+          if (!realId) return;
+          requestCommit(blockId);
+          return chainWrite(async () => {
+            const current = get();
+            if (current.pageId !== pageId || !current.page) return;
+            writeback.flushPendingLocalText(blockId, realId);
+            set({
+              page: {
+                ...current.page,
+                blocks: writeback.remapBlockId(current.page.blocks, blockId, realId),
+              },
+            });
+          });
+        })
+        .catch((err) =>
+          set({ writeError: `Save failed: ${err instanceof Error ? err.message : err}` }),
+        );
+    });
   },
 
   deleteBlock: async (blockId) => {
+    await chainWrite(async () => {
     const { pageId, page, auth } = get();
     if (!pageId || !page) return;
     const sink = writeback.sinkFor(pageId, auth.status === "ready");
     const captured = writeback.findWithPrev(page.blocks, blockId);
     const result = await writeback.deleteBlock(pageId, page.blocks, blockId, sink);
+    if (get().pageId !== pageId) return;
     set({ page: { ...page, blocks: result.blocks }, writeError: null });
     result.remote.catch((err) =>
       set({ writeError: `Save failed: ${err instanceof Error ? err.message : err}` }),
@@ -552,15 +614,18 @@ export const useAppStore = create<AppState>((set, get) => ({
         ?.rich_text?.length ?? 0) > 0;
     if (captured && hadText) {
       get().showToast("Block deleted", async () => {
-        const current = get().page;
-        const currentPageId = get().pageId;
-        if (!current || currentPageId !== pageId) return;
-        const restored = await writeback.restoreBlock(
-          pageId, current.blocks, captured.block, captured.prevId, sink,
-        );
-        set({ page: { ...current, blocks: restored.blocks } });
+        await chainWrite(async () => {
+          const current = get();
+          if (!current.page || current.pageId !== pageId) return;
+          const restored = await writeback.restoreBlock(
+            pageId, current.page.blocks, captured.block, captured.prevId, sink,
+          );
+          if (get().pageId !== pageId) return;
+          set({ page: { ...current.page, blocks: restored.blocks } });
+        });
       });
     }
+    });
   },
 
   setFocusBlock: (blockId) => set({ focusBlockId: blockId }),
@@ -581,15 +646,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updateTableCell: async (rowId, cellIndex, richText) => {
-    const { pageId, page, auth } = get();
-    if (!pageId || !page) return;
-    const sink = writeback.sinkFor(pageId, auth.status === "ready");
-    const result = await writeback.updateTableCell(
-      pageId, page.blocks, rowId, cellIndex, richText, sink,
-    );
-    set({ page: { ...page, blocks: result.blocks }, writeError: null });
-    result.remote.catch((err) =>
-      set({ writeError: `Save failed: ${err instanceof Error ? err.message : err}` }),
+    await applyWrite(get, set, (pageId, blocks, sink) =>
+      writeback.updateTableCell(pageId, blocks, rowId, cellIndex, richText, sink),
     );
   },
 
@@ -606,19 +664,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   dismissToast: () => set({ toast: null }),
 
   addTableRow: async (tableId, afterRowId) => {
-    const { pageId, page, auth } = get();
-    if (!pageId || !page) return;
-    const sink = writeback.sinkFor(pageId, auth.status === "ready");
-    const result = await writeback.addTableRow(
-      pageId, page.blocks, tableId, afterRowId, sink,
-    );
-    set({ page: { ...page, blocks: result.blocks }, writeError: null });
-    result.remote.catch((err) =>
-      set({ writeError: `Save failed: ${err instanceof Error ? err.message : err}` }),
+    await applyWrite(get, set, (pageId, blocks, sink) =>
+      writeback.addTableRow(pageId, blocks, tableId, afterRowId, sink),
     );
   },
 
   setTableColumns: async (tableId, delta) => {
+    await chainWrite(async () => {
     const { pageId, page, auth } = get();
     if (!pageId || !page) return;
     const table = writeback.findWithPrev(page.blocks, tableId)?.block;
@@ -629,6 +681,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const result = await writeback.setTableColumns(
       pageId, page.blocks, tableId, newWidth, sink,
     );
+    if (get().pageId !== pageId) return;
     set({ page: { ...page, blocks: result.blocks }, writeError: null });
     void result.remote
       .then(() => {
@@ -640,16 +693,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       .catch((err) =>
         set({ writeError: `Save failed: ${err instanceof Error ? err.message : err}` }),
       );
+    });
   },
 
   duplicateBlock: async (blockId) => {
-    const { pageId, page, auth } = get();
-    if (!pageId || !page) return;
-    const sink = writeback.sinkFor(pageId, auth.status === "ready");
-    const result = await writeback.duplicateBlock(pageId, page.blocks, blockId, sink);
-    set({ page: { ...page, blocks: result.blocks }, writeError: null });
-    result.remote.catch((err) =>
-      set({ writeError: `Save failed: ${err instanceof Error ? err.message : err}` }),
+    await applyWrite(get, set, (pageId, blocks, sink) =>
+      writeback.duplicateBlock(pageId, blocks, blockId, sink),
     );
   },
 

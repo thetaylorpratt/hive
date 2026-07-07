@@ -103,8 +103,13 @@ function TierList({
       // Cross-tier drop = adopt this tier; also un-file from any folder.
       if (dragged.tier !== tier) await setItemTier(draggedId, tier);
       else if (dragged.parentFolderId) await moveItemToFolder(draggedId, null);
+      const from = items.findIndex((i) => i.id === draggedId);
+      let insertAt = overIndex ?? items.length;
+      // the drop index was computed over rows that still include the
+      // dragged item — compensate when moving downward
+      if (from !== -1 && from < insertAt) insertAt -= 1;
       const ids = items.filter((i) => i.id !== draggedId).map((i) => i.id);
-      ids.splice(overIndex ?? ids.length, 0, draggedId);
+      ids.splice(insertAt, 0, draggedId);
       await reorderTier(tier, ids);
     })();
   };

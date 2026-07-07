@@ -44,6 +44,7 @@ export function diffBlockTrees(
   let changed = 0;
 
   for (const [id, block] of after) {
+    if (id.startsWith("local-")) continue; // our own uncommitted inserts
     const prev = before.get(id);
     if (!prev) {
       added += 1;
@@ -56,6 +57,7 @@ export function diffBlockTrees(
     }
   }
   for (const id of before.keys()) {
+    if (id.startsWith("local-")) continue; // local id swapped for a real one
     if (!after.has(id)) removed += 1;
   }
 

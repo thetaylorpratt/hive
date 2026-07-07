@@ -32,7 +32,12 @@ async function backend(): Promise<"sql" | "local"> {
     db = await Database.load("sqlite:hive.db");
     return "sql";
   } catch {
-    local = JSON.parse(localStorage.getItem("hive-frecency") ?? "{}");
+    try {
+      local = JSON.parse(localStorage.getItem("hive-frecency") ?? "{}");
+    } catch {
+      local = null;
+    }
+    local ??= {}; // corrupt or "null" snapshot: reset
     return "local";
   }
 }

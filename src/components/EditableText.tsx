@@ -263,6 +263,16 @@ export function EditableText({
     }
   }, [focusBlockId, block.id, setFocusBlock]);
 
+  // The store asks us to commit before it remaps this block's id (the key
+  // change remounts the editor — uncommitted text must reach the model first).
+  useEffect(() => {
+    const onCommitRequest = (e: Event) => {
+      if ((e as CustomEvent).detail === block.id) commitRef.current();
+    };
+    window.addEventListener("hive-commit-block", onCommitRequest);
+    return () => window.removeEventListener("hive-commit-block", onCommitRequest);
+  }, [block.id]);
+
   // Blocks with non-text runs (inline equations, mentions) keep the static
   // renderer: the HTML round-trip would flatten them. Editing those blocks
   // stays a native-Notion job in v1.
@@ -278,6 +288,9 @@ export function EditableText({
       void editBlockText(block.id, block.type, parsed);
     }
   };
+
+  const commitRef = useRef(() => {});
+  commitRef.current = commit;
 
   const pickSlash = (type: string) => {
     setSlash(null);
@@ -301,6 +314,12 @@ export function EditableText({
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     const text = ref.current?.textContent ?? "";
+
+    if (colorMenu && e.key === "Escape") {
+      e.preventDefault();
+      setColorMenu(false);
+      return;
+    }
 
     // :emoji: completion menu
     if (emojiMenu && emojiMatches.length > 0) {
@@ -370,11 +389,14 @@ export function EditableText({
 
     // slash menu: capture navigation + filter while open
     if (slash) {
-      if (e.key === "Enter") {
+      if (e.key === "Enter" && slashMatches.length > 0) {
         e.preventDefault();
         const option = slashMatches[slash.index];
         if (option) pickSlash(option.type);
         return;
+      }
+      if (e.key === "Enter") {
+        setSlash(null); // no matches: let Enter behave normally below
       }
       if (e.key === "Escape") {
         e.preventDefault();
@@ -468,7 +490,11 @@ export function EditableText({
         spellCheck={false}
         data-placeholder={block.type === "paragraph" ? "Type, or / for blocks…" : "Type…"}
         onBlur={() => {
-          if (!slash) commit();
+          if (linkInput) return; // focus moved into our own popover
+          setSlash(null);
+          setEmojiMenu(null);
+          setColorMenu(false);
+          commit();
         }}
         onKeyDown={onKeyDown}
         onFocus={(e) => {

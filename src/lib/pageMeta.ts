@@ -28,10 +28,24 @@ export function blocksToPlainText(
   const parts: string[] = [];
   const walk = (list: typeof blocks) => {
     for (const b of list) {
-      const payload = b[b.type] as { rich_text?: { plain_text: string }[] } | undefined;
+      const payload = b[b.type] as {
+        rich_text?: { plain_text: string }[];
+        cells?: { plain_text: string }[][];
+        caption?: { plain_text: string }[];
+        title?: string;
+      } | undefined;
       if (payload?.rich_text) {
         parts.push(payload.rich_text.map((t) => t.plain_text).join(""));
       }
+      if (payload?.cells) {
+        parts.push(
+          payload.cells.map((c) => c.map((t) => t.plain_text).join("")).join(" "),
+        );
+      }
+      if (payload?.caption) {
+        parts.push(payload.caption.map((t) => t.plain_text).join(""));
+      }
+      if (typeof payload?.title === "string") parts.push(payload.title);
       if (b.children) walk(b.children as typeof blocks);
     }
   };

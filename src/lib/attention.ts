@@ -66,13 +66,23 @@ export function computeUnread(items: SidebarItem[]): Set<string> {
   return unread;
 }
 
+let pollOffset = 0;
+
 async function pollOnce(onChange: () => void) {
   const watched = await listAllWatched();
-  const pageIds = [
+  const unique = [
     ...new Set(
       watched.map((w) => w.notionPageId).filter((id) => id !== DEMO_PAGE_ID),
     ),
-  ].slice(0, MAX_PAGES_PER_CYCLE);
+  ];
+  // Rotate the window so watch lists larger than one cycle still get
+  // coverage instead of starving everything past the first N.
+  const start = unique.length ? pollOffset % unique.length : 0;
+  const pageIds = [...unique.slice(start), ...unique.slice(0, start)].slice(
+    0,
+    MAX_PAGES_PER_CYCLE,
+  );
+  pollOffset += MAX_PAGES_PER_CYCLE;
 
   let changed = false;
   for (const pageId of pageIds) {

@@ -392,15 +392,39 @@ const TIER2: Record<string, BlockComponent> = {
 
 const RENDERERS: Record<string, BlockComponent> = { ...TIER1, ...TIER2 };
 
+import { Component as ReactComponent } from "react";
+import type { ErrorInfo, ReactNode as RN } from "react";
+
+/** Real error boundary: a try/catch around createElement never fires —
+ * React invokes components later. Malformed payloads degrade to the card. */
+class BlockBoundary extends ReactComponent<
+  { block: HiveBlock; children: RN },
+  { failed: boolean }
+> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch(_e: Error, _i: ErrorInfo) {}
+  componentDidUpdate(prev: { block: HiveBlock }) {
+    if (prev.block !== this.props.block && this.state.failed) {
+      this.setState({ failed: false });
+    }
+  }
+  render() {
+    if (this.state.failed) return <FallbackCard block={this.props.block} />;
+    return this.props.children;
+  }
+}
+
 function SafeBlock({ block }: { block: HiveBlock }) {
   const Component = RENDERERS[block.type];
   if (!Component) return <FallbackCard block={block} />;
-  try {
-    return <Component block={block} />;
-  } catch {
-    // Fallback, never crash — malformed payloads degrade to the Tier 3 card.
-    return <FallbackCard block={block} />;
-  }
+  return (
+    <BlockBoundary block={block}>
+      <Component block={block} />
+    </BlockBoundary>
+  );
 }
 
 /**

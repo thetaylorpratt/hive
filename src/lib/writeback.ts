@@ -100,6 +100,31 @@ export interface WriteResult {
  * budget during fast editing — POLISH_OPPORTUNITIES sync refinements).
  */
 const COALESCE_MS = 1200;
+
+// Text typed into blocks that still carry a temporary local- id: buffered
+// here (no API call possible yet) and flushed when the real id arrives.
+const pendingLocalText = new Map<string, { type: string; richText: RichTextItem[] }>();
+
+/** Cancel any queued/buffered text write (block converted or deleted). */
+export function cancelPendingTextWrite(blockId: string) {
+  const pending = pendingTextWrites.get(blockId);
+  if (pending) {
+    clearTimeout(pending.timer);
+    pending.waiters.forEach((w) => w.resolve());
+    pendingTextWrites.delete(blockId);
+  }
+  pendingLocalText.delete(blockId);
+}
+
+/** After an id remap, send any text buffered under the old local id. */
+export function flushPendingLocalText(fromId: string, toId: string) {
+  const buffered = pendingLocalText.get(fromId);
+  pendingLocalText.delete(fromId);
+  if (buffered) {
+    void scheduleTextWrite(toId, buffered.type, buffered.richText).catch(() => {});
+  }
+}
+
 const pendingTextWrites = new Map<
   string,
   {
@@ -158,10 +183,14 @@ export async function editBlockText(
       : b,
   );
   await persist(pageId, next);
-  const remote =
-    sink === "notion"
-      ? scheduleTextWrite(blockId, type, richText)
-      : Promise.resolve();
+  let remote: Promise<void> = Promise.resolve();
+  if (sink === "notion") {
+    if (blockId.startsWith("local-")) {
+      pendingLocalText.set(blockId, { type, richText }); // flushed on remap
+    } else {
+      remote = scheduleTextWrite(blockId, type, richText);
+    }
+  }
   return { blocks: next, remote };
 }
 
@@ -179,7 +208,7 @@ export async function toggleTodo(
   );
   await persist(pageId, next);
   const remote =
-    sink === "notion"
+    sink === "notion" && !blockId.startsWith("local-")
       ? enqueue(() =>
           notion().blocks.update({
             block_id: blockId,
@@ -195,13 +224,29 @@ export async function toggleTodo(
  * `local-*` id immediately; on the notion sink, `remoteId` resolves with the
  * real block id so the caller can remap before any follow-up write.
  */
+/** Find the direct parent block of a nested block (null = top level). */
+function findParentOf(blocks: HiveBlock[], blockId: string): HiveBlock | null {
+  for (const b of blocks) {
+    if (b.children?.some((c) => c.id === blockId)) return b;
+    if (b.children) {
+      const nested = findParentOf(b.children, blockId);
+      if (nested) return nested;
+    }
+  }
+  return null;
+}
+
 export async function insertParagraphAfter(
   pageId: string,
   blocks: HiveBlock[],
   afterId: string,
-  parentId: string, // the Notion parent to append into (page or block id)
+  pageParentId: string, // the page id (used when afterId is top-level)
   sink: WriteSink,
 ): Promise<WriteResult & { newBlockId: string; remoteId: Promise<string | null> }> {
+  // `after` must be a direct child of the append target: resolve the real
+  // parent for nested siblings instead of always appending to the page.
+  const parentBlock = findParentOf(blocks, afterId);
+  const parentId = parentBlock?.id ?? pageParentId;
   const localId = `local-${crypto.randomUUID()}`;
   const newBlock: HiveBlock = {
     id: localId,
@@ -213,7 +258,7 @@ export async function insertParagraphAfter(
   await persist(pageId, next);
 
   const remoteId =
-    sink === "notion"
+    sink === "notion" && !afterId.startsWith("local-") && !parentId.startsWith("local-")
       ? enqueue(() =>
           notion().blocks.children.append({
             block_id: parentId,
@@ -413,7 +458,11 @@ export async function setTableColumns(
           await enqueue(() => notion().blocks.delete({ block_id: tableId }));
         })
       : Promise.resolve();
-  return { blocks: next, remote, rebuilt: sink === "notion" };
+  return {
+    blocks: next,
+    remote,
+    rebuilt: sink === "notion" && !tableId.startsWith("local-"),
+  };
 }
 
 /** Duplicate a text-class block (or simple table) right below itself. */
@@ -521,40 +570,47 @@ function apiPayloadFor(block: HiveBlock): Record<string, unknown> | null {
  * without `after` lands at the END, not the top). The recreated block's id
  * changes → comments anchored to it orphan.
  */
+export type RemapResult = { from: string; to: string | null } | null;
+
 export async function moveBlock(
   pageId: string,
   blocks: HiveBlock[],
   blockId: string,
   direction: "up" | "down",
   sink: WriteSink,
-): Promise<WriteResult> {
+): Promise<WriteResult & { remap?: Promise<RemapResult> }> {
   const index = blocks.findIndex((b) => b.id === blockId);
   if (index === -1) return { blocks, remote: Promise.resolve() }; // top-level only in v1
   const swapWith = direction === "up" ? index - 1 : index + 1;
   if (swapWith < 0 || swapWith >= blocks.length) {
     return { blocks, remote: Promise.resolve() };
   }
+  // Recreate the block that logically moved DOWN, after its new predecessor.
+  const recreated = direction === "up" ? blocks[swapWith] : blocks[index];
+  const afterId = direction === "up" ? blockId : blocks[swapWith].id;
+  if (recreated.children?.length) {
+    // Recreate would drop the subtree on Notion — refuse rather than diverge.
+    return { blocks, remote: Promise.resolve() };
+  }
   const next = [...blocks];
   [next[index], next[swapWith]] = [next[swapWith], next[index]];
   await persist(pageId, next);
 
-  // Recreate the block that logically moved DOWN, after its new predecessor.
-  const recreated = direction === "up" ? blocks[swapWith] : blocks[index];
-  const afterId = direction === "up" ? blockId : blocks[swapWith].id;
   const payload = apiPayloadFor(recreated);
   const remote =
-    sink === "notion" && payload && !recreated.id.startsWith("local-")
+    sink === "notion" && payload && !recreated.id.startsWith("local-") && !afterId.startsWith("local-")
       ? enqueue(() =>
           notion().blocks.children.append({
             block_id: pageId,
             after: afterId,
             children: [payload as never],
           }),
-        ).then(async () => {
+        ).then(async (resp) => {
           await enqueue(() => notion().blocks.delete({ block_id: recreated.id }));
+          return { from: recreated.id, to: (resp as { results?: { id?: string }[] }).results?.[0]?.id ?? null };
         })
-      : Promise.resolve();
-  return { blocks: next, remote };
+      : Promise.resolve(null);
+  return { blocks: next, remote: remote.then(() => undefined), remap: remote };
 }
 
 /**
@@ -567,7 +623,7 @@ export async function indentBlock(
   blocks: HiveBlock[],
   blockId: string,
   sink: WriteSink,
-): Promise<WriteResult> {
+): Promise<WriteResult & { remap?: Promise<RemapResult> }> {
   const scan = (list: HiveBlock[]): { list: HiveBlock[]; i: number } | null => {
     const i = list.findIndex((b) => b.id === blockId);
     if (i !== -1) return { list, i };
@@ -599,18 +655,22 @@ export async function indentBlock(
   await persist(pageId, next);
 
   const payload = apiPayloadFor(moving);
-  const remote =
+  const remap =
     sink === "notion" && payload && !moving.id.startsWith("local-") && !prev.id.startsWith("local-")
       ? enqueue(() =>
           notion().blocks.children.append({
             block_id: prev.id,
             children: [payload as never],
           }),
-        ).then(async () => {
+        ).then(async (resp) => {
           await enqueue(() => notion().blocks.delete({ block_id: blockId }));
+          return {
+            from: blockId,
+            to: (resp as { results?: { id?: string }[] }).results?.[0]?.id ?? null,
+          };
         })
-      : Promise.resolve();
-  return { blocks: next, remote };
+      : Promise.resolve(null);
+  return { blocks: next, remote: remap.then(() => undefined), remap };
 }
 
 export async function outdentBlock(
@@ -618,7 +678,7 @@ export async function outdentBlock(
   blocks: HiveBlock[],
   blockId: string,
   sink: WriteSink,
-): Promise<WriteResult> {
+): Promise<WriteResult & { remap?: Promise<RemapResult> }> {
   // find parent whose children contain blockId (top level = not outdentable)
   let parent: HiveBlock | null = null;
   const walk = (list: HiveBlock[]) => {
@@ -641,7 +701,7 @@ export async function outdentBlock(
   await persist(pageId, next);
 
   const payload = apiPayloadFor(moving);
-  const remote =
+  const remap =
     sink === "notion" && payload && !moving.id.startsWith("local-") && !parentBlock.id.startsWith("local-")
       ? enqueue(() =>
           notion().blocks.children.append({
@@ -649,11 +709,15 @@ export async function outdentBlock(
             after: parentBlock.id,
             children: [payload as never],
           }),
-        ).then(async () => {
+        ).then(async (resp) => {
           await enqueue(() => notion().blocks.delete({ block_id: blockId }));
+          return {
+            from: blockId,
+            to: (resp as { results?: { id?: string }[] }).results?.[0]?.id ?? null,
+          };
         })
-      : Promise.resolve();
-  return { blocks: next, remote };
+      : Promise.resolve(null);
+  return { blocks: next, remote: remap.then(() => undefined), remap };
 }
 
 /** Replace one cell of a table_row (API requires writing all cells). */
@@ -706,6 +770,7 @@ export async function convertBlockType(
   richText: RichTextItem[],
   sink: WriteSink,
 ): Promise<WriteResult & { remoteId: Promise<string | null> }> {
+  cancelPendingTextWrite(blockId); // the old block is about to be replaced
   const noText = newType === "divider" || newType === "table";
   const payload = { ...emptyPayload(newType), ...(noText ? {} : { rich_text: richText }) };
   const tableChildren = newType === "table" ? freshTableRows() : null;
@@ -769,9 +834,13 @@ export async function restoreBlock(
   afterId: string | null,
   sink: WriteSink,
 ): Promise<WriteResult> {
+  // The API can only append (after a sibling or at the end) — when the
+  // block was first, place it at the end locally too so both sides agree.
   const next = afterId
     ? insertAfterInTree(blocks, afterId, block)
-    : [block, ...blocks];
+    : sink === "notion"
+      ? [...blocks, block]
+      : [block, ...blocks];
   await persist(pageId, next);
 
   let remote: Promise<void> = Promise.resolve();
@@ -823,6 +892,7 @@ export async function deleteBlock(
   blockId: string,
   sink: WriteSink,
 ): Promise<WriteResult> {
+  cancelPendingTextWrite(blockId);
   const next = removeFromTree(blocks, blockId);
   await persist(pageId, next);
   const remote =
