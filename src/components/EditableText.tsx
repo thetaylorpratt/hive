@@ -229,6 +229,12 @@ export function EditableText({
       if (k === "u" && !e.shiftKey) { e.preventDefault(); document.execCommand("underline"); return; }
       if (k === "s" && e.shiftKey) { e.preventDefault(); document.execCommand("strikeThrough"); return; }
       if (k === "e" && !e.shiftKey) { e.preventDefault(); wrapInlineCode(); return; }
+      if (k === "d" && !e.shiftKey) {
+        e.preventDefault();
+        commit();
+        void useAppStore.getState().duplicateBlock(block.id);
+        return;
+      }
     }
 
     // ⌘⌥0-8 block conversions, preserving current text

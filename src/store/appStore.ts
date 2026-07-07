@@ -106,6 +106,9 @@ interface AppState {
     cellIndex: number,
     richText: RichTextItem[],
   ) => Promise<void>;
+  addTableRow: (tableId: string, afterRowId: string | null) => Promise<void>;
+  setTableColumns: (tableId: string, delta: 1 | -1) => Promise<void>;
+  duplicateBlock: (blockId: string) => Promise<void>;
   setFocusBlock: (blockId: string | null) => void;
   toggleFocusMode: () => void;
   showToast: (message: string, undo?: () => Promise<void>) => void;
@@ -572,6 +575,54 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   dismissToast: () => set({ toast: null }),
+
+  addTableRow: async (tableId, afterRowId) => {
+    const { pageId, page, auth } = get();
+    if (!pageId || !page) return;
+    const sink = writeback.sinkFor(pageId, auth.status === "ready");
+    const result = await writeback.addTableRow(
+      pageId, page.blocks, tableId, afterRowId, sink,
+    );
+    set({ page: { ...page, blocks: result.blocks }, writeError: null });
+    result.remote.catch((err) =>
+      set({ writeError: `Save failed: ${err instanceof Error ? err.message : err}` }),
+    );
+  },
+
+  setTableColumns: async (tableId, delta) => {
+    const { pageId, page, auth } = get();
+    if (!pageId || !page) return;
+    const table = writeback.findWithPrev(page.blocks, tableId)?.block;
+    const width = (table?.table as { table_width?: number })?.table_width ?? 2;
+    const newWidth = width + delta;
+    if (newWidth < 1 || newWidth > 8) return;
+    const sink = writeback.sinkFor(pageId, auth.status === "ready");
+    const result = await writeback.setTableColumns(
+      pageId, page.blocks, tableId, newWidth, sink,
+    );
+    set({ page: { ...page, blocks: result.blocks }, writeError: null });
+    void result.remote
+      .then(() => {
+        // The rebuild trick changes table/row ids — resync from Notion.
+        if (result.rebuilt && get().pageId === pageId) {
+          void get().openPage(pageId);
+        }
+      })
+      .catch((err) =>
+        set({ writeError: `Save failed: ${err instanceof Error ? err.message : err}` }),
+      );
+  },
+
+  duplicateBlock: async (blockId) => {
+    const { pageId, page, auth } = get();
+    if (!pageId || !page) return;
+    const sink = writeback.sinkFor(pageId, auth.status === "ready");
+    const result = await writeback.duplicateBlock(pageId, page.blocks, blockId, sink);
+    set({ page: { ...page, blocks: result.blocks }, writeError: null });
+    result.remote.catch((err) =>
+      set({ writeError: `Save failed: ${err instanceof Error ? err.message : err}` }),
+    );
+  },
 
   recomputeUnread: async () => {
     const watched = await org.listAllWatched();

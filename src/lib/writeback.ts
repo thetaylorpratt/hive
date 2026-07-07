@@ -301,6 +301,186 @@ export async function updatePageIcon(
   return { page: nextPage, remote };
 }
 
+/**
+ * Add a row to a simple table. Rows are ordinary children of the table
+ * block, so this is native API — children.append with `after`.
+ */
+export async function addTableRow(
+  pageId: string,
+  blocks: HiveBlock[],
+  tableId: string,
+  afterRowId: string | null,
+  sink: WriteSink,
+): Promise<WriteResult & { newRowId: string }> {
+  let width = 2;
+  const localId = `local-${crypto.randomUUID()}`;
+  const next = mapTree(blocks, (b) => {
+    if (b.id !== tableId) return b;
+    width = (b.table as { table_width?: number })?.table_width ?? 2;
+    const newRow: HiveBlock = {
+      id: localId,
+      type: "table_row",
+      has_children: false,
+      table_row: { cells: Array.from({ length: width }, () => []) },
+    };
+    const children = [...(b.children ?? [])];
+    const index = afterRowId
+      ? children.findIndex((r) => r.id === afterRowId) + 1
+      : children.length;
+    children.splice(index, 0, newRow);
+    return { ...b, children };
+  });
+  await persist(pageId, next);
+
+  const remote =
+    sink === "notion" && !tableId.startsWith("local-")
+      ? enqueue(() =>
+          notion().blocks.children.append({
+            block_id: tableId,
+            ...(afterRowId && !afterRowId.startsWith("local-")
+              ? { after: afterRowId }
+              : {}),
+            children: [
+              {
+                table_row: {
+                  cells: Array.from({ length: width }, () => []),
+                },
+              } as never,
+            ],
+          }),
+        ).then(() => undefined)
+      : Promise.resolve();
+  return { blocks: next, remote, newRowId: localId };
+}
+
+/**
+ * Change a table's column count. `table_width` is immutable after creation,
+ * so the notion sink REBUILDS the table: append a new table (with resized
+ * rows) after the old one, delete the old, then refetch to pick up the new
+ * ids. Caveat: comments anchored to the old table/rows are orphaned — the
+ * unavoidable cost of the rebuild trick.
+ */
+export async function setTableColumns(
+  pageId: string,
+  blocks: HiveBlock[],
+  tableId: string,
+  newWidth: number,
+  sink: WriteSink,
+): Promise<WriteResult & { rebuilt: boolean }> {
+  if (newWidth < 1) return { blocks, remote: Promise.resolve(), rebuilt: false };
+  let payload: { table_width: number; has_column_header?: boolean; has_row_header?: boolean } | null = null;
+  let rows: RichTextItem[][][] = [];
+  const resize = (cells: RichTextItem[][]) =>
+    Array.from({ length: newWidth }, (_, i) => cells[i] ?? []);
+
+  const next = mapTree(blocks, (b) => {
+    if (b.id === tableId) {
+      const table = b.table as typeof payload;
+      payload = { ...table!, table_width: newWidth };
+      const children = (b.children ?? []).map((row) => {
+        const cells = resize(
+          ((row.table_row as { cells?: RichTextItem[][] })?.cells) ?? [],
+        );
+        rows.push(cells);
+        return { ...row, table_row: { cells } };
+      });
+      return { ...b, table: payload as never, children };
+    }
+    return b;
+  });
+  await persist(pageId, next);
+
+  const remote =
+    sink === "notion" && payload && !tableId.startsWith("local-")
+      ? enqueue(() =>
+          notion().blocks.children.append({
+            block_id: pageId,
+            after: tableId,
+            children: [
+              {
+                table: {
+                  ...payload,
+                  children: rows.map((cells) => ({
+                    table_row: {
+                      cells: cells.map((c) => toApiRichText(c)),
+                    },
+                  })),
+                },
+              } as never,
+            ],
+          }),
+        ).then(async () => {
+          await enqueue(() => notion().blocks.delete({ block_id: tableId }));
+        })
+      : Promise.resolve();
+  return { blocks: next, remote, rebuilt: sink === "notion" };
+}
+
+/** Duplicate a text-class block (or simple table) right below itself. */
+export async function duplicateBlock(
+  pageId: string,
+  blocks: HiveBlock[],
+  blockId: string,
+  sink: WriteSink,
+): Promise<WriteResult> {
+  const found = findWithPrev(blocks, blockId);
+  if (!found) return { blocks, remote: Promise.resolve() };
+  const source = found.block;
+
+  const cloneTree = (b: HiveBlock): HiveBlock => ({
+    ...JSON.parse(JSON.stringify(b)),
+    id: `local-${crypto.randomUUID()}`,
+    ...(b.children ? { children: b.children.map(cloneTree) } : {}),
+  });
+  const copy = cloneTree(source);
+  const next = insertAfterInTree(blocks, blockId, copy);
+  await persist(pageId, next);
+
+  let remote: Promise<void> = Promise.resolve();
+  if (sink === "notion" && !blockId.startsWith("local-")) {
+    if (EDITABLE_TYPES.has(source.type)) {
+      const payload = source[source.type] as { rich_text?: RichTextItem[]; checked?: boolean };
+      remote = enqueue(() =>
+        notion().blocks.children.append({
+          block_id: pageId,
+          after: blockId,
+          children: [
+            {
+              [source.type]: {
+                ...(source.type === "to_do" ? { checked: payload?.checked ?? false } : {}),
+                rich_text: toApiRichText(payload?.rich_text ?? []),
+              },
+            } as never,
+          ],
+        }),
+      ).then(() => undefined);
+    } else if (source.type === "table") {
+      const table = source.table as { table_width: number; has_column_header?: boolean; has_row_header?: boolean };
+      remote = enqueue(() =>
+        notion().blocks.children.append({
+          block_id: pageId,
+          after: blockId,
+          children: [
+            {
+              table: {
+                ...table,
+                children: (source.children ?? []).map((row) => ({
+                  table_row: {
+                    cells: (
+                      ((row.table_row as { cells?: RichTextItem[][] })?.cells) ?? []
+                    ).map((c) => toApiRichText(c)),
+                  },
+                })),
+              },
+            } as never,
+          ],
+        }),
+      ).then(() => undefined);
+    }
+  }
+  return { blocks: next, remote };
+}
+
 /** Replace one cell of a table_row (API requires writing all cells). */
 export async function updateTableCell(
   pageId: string,

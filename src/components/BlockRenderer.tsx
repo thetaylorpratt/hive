@@ -207,6 +207,77 @@ function TableCell({
   );
 }
 
+function SimpleTable({ block }: { block: HiveBlock }) {
+  const canEdit = useAppStore((s) => s.canEdit());
+  const addTableRow = useAppStore((s) => s.addTableRow);
+  const setTableColumns = useAppStore((s) => s.setTableColumns);
+  const deleteBlock = useAppStore((s) => s.deleteBlock);
+  const payload = block.table as {
+    has_column_header?: boolean;
+    has_row_header?: boolean;
+  };
+  const rows = (block.children ?? []).filter((c) => c.type === "table_row");
+  return (
+    <div className="hive-table-wrap">
+      <table className="hive-table">
+        <tbody>
+          {rows.map((row, ri) => {
+            const cells =
+              (row.table_row as { cells?: RichTextItem[][] })?.cells ?? [];
+            return (
+              <tr key={row.id}>
+                {cells.map((cell, ci) => {
+                  const isHeader =
+                    (payload?.has_column_header && ri === 0) ||
+                    (payload?.has_row_header && ci === 0);
+                  const Cell = isHeader ? "th" : "td";
+                  return (
+                    <Cell key={ci}>
+                      <TableCell rowId={row.id} index={ci} items={cell} />
+                    </Cell>
+                  );
+                })}
+                {canEdit && (
+                  <td className="hive-row-gutter">
+                    <button
+                      title="Add row below"
+                      onClick={() => void addTableRow(block.id, row.id)}
+                    >
+                      +
+                    </button>
+                    {rows.length > 1 && (
+                      <button
+                        title="Delete row"
+                        onClick={() => void deleteBlock(row.id)}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </td>
+                )}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {canEdit && (
+        <div className="hive-table-controls">
+          <button onClick={() => void addTableRow(block.id, rows[rows.length - 1]?.id ?? null)}>
+            + row
+          </button>
+          <button onClick={() => void setTableColumns(block.id, 1)}>+ col</button>
+          <button
+            title="Removes the last column (rebuilds the table on Notion — anchored comments are lost)"
+            onClick={() => void setTableColumns(block.id, -1)}
+          >
+            − col
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Tier 2 — render-only (Phase 3); tables gained editable cells later. */
 const TIER2: Record<string, BlockComponent> = {
   child_page: ({ block }) => <ChildPageCard block={block} />,
@@ -231,40 +302,7 @@ const TIER2: Record<string, BlockComponent> = {
     );
   },
 
-  table: ({ block }) => {
-    const payload = block.table as {
-      has_column_header?: boolean;
-      has_row_header?: boolean;
-    };
-    const rows = (block.children ?? []).filter((c) => c.type === "table_row");
-    return (
-      <div className="hive-table-wrap">
-        <table className="hive-table">
-          <tbody>
-            {rows.map((row, ri) => {
-              const cells =
-                (row.table_row as { cells?: RichTextItem[][] })?.cells ?? [];
-              return (
-                <tr key={row.id}>
-                  {cells.map((cell, ci) => {
-                    const isHeader =
-                      (payload?.has_column_header && ri === 0) ||
-                      (payload?.has_row_header && ci === 0);
-                    const Cell = isHeader ? "th" : "td";
-                    return (
-                      <Cell key={ci}>
-                        <TableCell rowId={row.id} index={ci} items={cell} />
-                      </Cell>
-                    );
-                  })}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    );
-  },
+  table: ({ block }) => <SimpleTable block={block} />,
 
   toggle: ({ block }) => (
     <details className="hive-toggle">

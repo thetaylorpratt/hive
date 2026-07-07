@@ -55,7 +55,27 @@ Suggested section, `/turn into`, color commands.
 
 ✅ `/table` inserts 2×3 simple table (local children + API `table_row`
 children on the notion sink); ✅ cells are contentEditable with per-row
-`table_row.cells` write-back. 🔜 add/remove rows/columns, header toggles.
+`table_row.cells` write-back. ✅ Row add/delete (hover gutter + controls
+bar) — native API, rows are ordinary children. ✅ Column add/remove via the
+**rebuild trick**: `table_width` is immutable, so the notion sink appends a
+rebuilt table after the old one and deletes the old, then refetches for the
+new ids. Caveat: comments anchored to the rebuilt table are orphaned.
+🔜 header-row/column toggles (plain `blocks.update` — just needs UI).
+
+## Workaround map for "blocked" items
+
+Most deferrals are effort, not API walls. The recreate-and-delete primitive
+(already used for type conversion and column rebuilds) unlocks: **Tab
+indent/outdent** (re-append as child of previous sibling), **⌘⇧↑/↓ move**
+(re-append after a different sibling), **⌘⌥9 turn-into-page**
+(`pages.create` + move content). Shared caveat: the block's id changes, so
+Notion-side comments anchored to it are orphaned — fine for your own drafts,
+worth a confirm on comment-bearing blocks. ✅ **⌘D duplicate** shipped (pure
+append, no caveat). Fully writable, just needs UI: **⌘K links**, **text
+colors**, **@mentions of people/pages/dates** (mention rich text is
+writable), **`[[`/`+` page links** (`pages.create`). Truly blocked, local
+substitutes only: move page between parents (hosted-MCP-only), resolve
+comment threads, version restore, analytics, locks, presence.
 
 ## Also inventoried, deliberately deferred
 

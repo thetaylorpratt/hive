@@ -269,6 +269,53 @@ body {
   color: var(--hive-color-fg);
 }
 
+.hive-row-gutter {
+  border: none !important;
+  background: none !important;
+  padding: 2px 4px !important;
+  white-space: nowrap;
+  opacity: 0;
+}
+tr:hover .hive-row-gutter {
+  opacity: 1;
+}
+.hive-row-gutter button {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--hive-color-fg-muted);
+  padding: 0 3px;
+  font-size: 0.85rem;
+}
+.hive-row-gutter button:hover {
+  color: var(--hive-color-accent);
+}
+
+.hive-table-controls {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+  opacity: 0;
+  transition: opacity 120ms;
+}
+.hive-table-wrap:hover .hive-table-controls {
+  opacity: 1;
+}
+.hive-table-controls button {
+  font: inherit;
+  font-size: 0.72rem;
+  border: 1px dashed var(--hive-color-border);
+  background: none;
+  border-radius: var(--hive-radius-sm);
+  color: var(--hive-color-fg-muted);
+  padding: 2px 8px;
+  cursor: pointer;
+}
+.hive-table-controls button:hover {
+  color: var(--hive-color-accent);
+  border-color: var(--hive-color-accent);
+}
+
 .hive-cell-editable {
   outline: none;
   min-width: 48px;
