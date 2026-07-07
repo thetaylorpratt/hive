@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAppStore } from "./store/appStore";
 import { Header } from "./components/Header";
 import { BlockList } from "./components/BlockRenderer";
@@ -53,6 +53,43 @@ function Notice({
       </div>
       <div style={{ color: "var(--hive-color-fg-secondary)" }}>{children}</div>
     </div>
+  );
+}
+
+function PageIcon({ emoji }: { emoji: string | null }) {
+  const canEdit = useAppStore((s) => s.canEdit());
+  const updatePageIcon = useAppStore((s) => s.updatePageIcon);
+  const [editing, setEditing] = useState(false);
+
+  if (editing) {
+    return (
+      <input
+        className="hive-input hive-page-icon-input"
+        autoFocus
+        defaultValue={emoji ?? ""}
+        maxLength={4}
+        placeholder="🐝"
+        title="⌃⌘Space opens the emoji picker; empty removes the icon"
+        onBlur={(e) => {
+          void updatePageIcon(e.target.value.trim() || null);
+          setEditing(false);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+          if (e.key === "Escape") setEditing(false);
+        }}
+      />
+    );
+  }
+  if (!emoji && !canEdit) return null;
+  return (
+    <span
+      className={`hive-page-icon${canEdit ? " editable" : ""}`}
+      title={canEdit ? "Click to change icon" : undefined}
+      onClick={() => canEdit && setEditing(true)}
+    >
+      {emoji ?? <span className="add-hint">☺︎</span>}
+    </span>
   );
 }
 
@@ -117,7 +154,7 @@ function Content() {
           </div>
         )}
         <h1 className="hive-page-title">
-          {emoji && <span style={{ marginRight: "0.35em" }}>{emoji}</span>}
+          <PageIcon emoji={emoji} />
           {pageTitle(page.page)}
         </h1>
         <PropertiesHeader page={page.page} />

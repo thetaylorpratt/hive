@@ -269,6 +269,38 @@ body {
   color: var(--hive-color-fg);
 }
 
+.hive-cell-editable {
+  outline: none;
+  min-width: 48px;
+  min-height: 1.2em;
+  caret-color: var(--hive-color-accent);
+}
+.hive-cell-editable:focus {
+  background: var(--hive-color-accent-subtle);
+  border-radius: var(--hive-radius-sm);
+}
+
+.hive-page-icon.editable {
+  cursor: pointer;
+  border-radius: var(--hive-radius-sm);
+  margin-right: 0.35em;
+}
+.hive-page-icon.editable:hover {
+  background: var(--hive-color-bg-subtle);
+}
+.hive-page-icon .add-hint {
+  color: var(--hive-color-fg-muted);
+  opacity: 0.5;
+  font-size: 0.7em;
+  vertical-align: middle;
+}
+.hive-page-icon-input {
+  width: 58px;
+  text-align: center;
+  font-size: 1.4rem;
+  margin-right: 0.35em;
+}
+
 /* ---- Tier 2 blocks ---- */
 
 .hive-image {

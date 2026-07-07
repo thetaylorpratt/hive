@@ -1,5 +1,7 @@
+import { useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import katex from "katex";
+import { htmlToRichText, richTextToHtml } from "../lib/richTextHtml";
 import "katex/dist/katex.min.css";
 import type { HiveBlock, RichTextItem } from "../lib/types";
 import { RichText } from "./RichText";
@@ -157,7 +159,55 @@ function ChildPageCard({ block }: { block: HiveBlock }) {
   );
 }
 
-/** Tier 2 — render-only (Phase 3). */
+/** Simple-table cell: contentEditable when the page is editable. */
+function TableCell({
+  rowId,
+  index,
+  items,
+}: {
+  rowId: string;
+  index: number;
+  items: RichTextItem[];
+}) {
+  const canEdit = useAppStore((s) => s.canEdit());
+  const updateTableCell = useAppStore((s) => s.updateTableCell);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Uncontrolled: content written only here (see EditableText for why).
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || document.activeElement === el) return;
+    const html = richTextToHtml(items);
+    if (el.innerHTML !== html) el.innerHTML = html;
+  });
+
+  if (!canEdit || items.some((i) => i.type !== "text")) {
+    return <RichText items={items} />;
+  }
+  return (
+    <div
+      ref={ref}
+      className="hive-cell-editable"
+      contentEditable
+      suppressContentEditableWarning
+      spellCheck={false}
+      onBlur={() => {
+        const parsed = htmlToRichText(ref.current?.innerHTML ?? "");
+        if (richTextToHtml(parsed) !== richTextToHtml(items)) {
+          void updateTableCell(rowId, index, parsed);
+        }
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === "Escape") {
+          e.preventDefault();
+          (e.target as HTMLElement).blur();
+        }
+      }}
+    />
+  );
+}
+
+/** Tier 2 — render-only (Phase 3); tables gained editable cells later. */
 const TIER2: Record<string, BlockComponent> = {
   child_page: ({ block }) => <ChildPageCard block={block} />,
   image: ({ block }) => {
@@ -203,7 +253,7 @@ const TIER2: Record<string, BlockComponent> = {
                     const Cell = isHeader ? "th" : "td";
                     return (
                       <Cell key={ci}>
-                        <RichText items={cell} />
+                        <TableCell rowId={row.id} index={ci} items={cell} />
                       </Cell>
                     );
                   })}

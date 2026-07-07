@@ -254,9 +254,85 @@ export function emptyPayload(type: string): Record<string, unknown> {
       return {};
     case "code":
       return { rich_text: [], language: "plain text" };
+    case "table":
+      return { table_width: 2, has_column_header: true, has_row_header: false };
     default:
       return { rich_text: [] };
   }
+}
+
+/** Local table_row children for a fresh /table (2 cols × 3 rows). */
+function freshTableRows(): HiveBlock[] {
+  return Array.from({ length: 3 }, () => ({
+    id: `local-${crypto.randomUUID()}`,
+    type: "table_row",
+    has_children: false,
+    table_row: { cells: [[], []] },
+  }));
+}
+
+/** Update a page's emoji icon (or clear it with null). */
+export async function updatePageIcon(
+  pageId: string,
+  page: Record<string, unknown>,
+  blocks: HiveBlock[],
+  emoji: string | null,
+  sink: WriteSink,
+): Promise<{ page: Record<string, unknown>; remote: Promise<void> }> {
+  const nextPage = {
+    ...page,
+    icon: emoji ? { type: "emoji", emoji } : null,
+  };
+  try {
+    const { upsertPageCache } = await import("./db");
+    await upsertPageCache(pageId, nextPage, blocks);
+  } catch {
+    /* no SQLite */
+  }
+  const remote =
+    sink === "notion"
+      ? enqueue(() =>
+          notion().pages.update({
+            page_id: pageId,
+            icon: emoji ? { type: "emoji", emoji } : null,
+          } as never),
+        ).then(() => undefined)
+      : Promise.resolve();
+  return { page: nextPage, remote };
+}
+
+/** Replace one cell of a table_row (API requires writing all cells). */
+export async function updateTableCell(
+  pageId: string,
+  blocks: HiveBlock[],
+  rowId: string,
+  cellIndex: number,
+  richText: RichTextItem[],
+  sink: WriteSink,
+): Promise<WriteResult> {
+  let updatedCells: RichTextItem[][] | null = null;
+  const next = mapTree(blocks, (b) => {
+    if (b.id !== rowId) return b;
+    const cells = [
+      ...(((b.table_row as { cells?: RichTextItem[][] })?.cells) ?? []),
+    ];
+    cells[cellIndex] = richText;
+    updatedCells = cells;
+    return { ...b, table_row: { cells } };
+  });
+  await persist(pageId, next);
+  const remote =
+    sink === "notion" && updatedCells && !rowId.startsWith("local-")
+      ? enqueue(() =>
+          notion().blocks.update({
+            block_id: rowId,
+            table_row: {
+              cells: updatedCells!.map((cell) => toApiRichText(cell)),
+            },
+          } as never),
+        ).then(() => undefined)
+      : Promise.resolve();
+  return { blocks: next, remote };
 }
 
 /**
@@ -275,14 +351,17 @@ export async function convertBlockType(
   richText: RichTextItem[],
   sink: WriteSink,
 ): Promise<WriteResult & { remoteId: Promise<string | null> }> {
-  const payload = { ...emptyPayload(newType), ...(newType !== "divider" ? { rich_text: richText } : {}) };
+  const noText = newType === "divider" || newType === "table";
+  const payload = { ...emptyPayload(newType), ...(noText ? {} : { rich_text: richText }) };
+  const tableChildren = newType === "table" ? freshTableRows() : null;
   const next = mapTree(blocks, (b) => {
     if (b.id !== blockId) return b;
+    const children = tableChildren ?? b.children;
     const replaced: HiveBlock = {
       id: b.id,
       type: newType,
-      has_children: Boolean(b.children?.length),
-      ...(b.children ? { children: b.children } : {}),
+      has_children: Boolean(children?.length),
+      ...(children ? { children } : {}),
       [newType]: payload,
     };
     return replaced;
@@ -299,8 +378,13 @@ export async function convertBlockType(
               {
                 [newType]: {
                   ...payload,
-                  ...(newType !== "divider"
-                    ? { rich_text: toApiRichText(richText) }
+                  ...(noText ? {} : { rich_text: toApiRichText(richText) }),
+                  ...(newType === "table"
+                    ? {
+                        children: Array.from({ length: 3 }, () => ({
+                          table_row: { cells: [[], []] },
+                        })),
+                      }
                     : {}),
                 },
               } as never,

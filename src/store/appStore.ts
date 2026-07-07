@@ -94,8 +94,18 @@ interface AppState {
   editBlockText: (blockId: string, type: string, richText: RichTextItem[]) => Promise<void>;
   toggleTodo: (blockId: string, checked: boolean) => Promise<void>;
   insertParagraphAfter: (afterId: string) => Promise<void>;
-  convertBlock: (blockId: string, newType: string) => Promise<void>;
+  convertBlock: (
+    blockId: string,
+    newType: string,
+    richText?: RichTextItem[],
+  ) => Promise<void>;
   deleteBlock: (blockId: string) => Promise<void>;
+  updatePageIcon: (emoji: string | null) => Promise<void>;
+  updateTableCell: (
+    rowId: string,
+    cellIndex: number,
+    richText: RichTextItem[],
+  ) => Promise<void>;
   setFocusBlock: (blockId: string | null) => void;
   toggleFocusMode: () => void;
   showToast: (message: string, undo?: () => Promise<void>) => void;
@@ -465,12 +475,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       );
   },
 
-  convertBlock: async (blockId, newType) => {
+  convertBlock: async (blockId, newType, richText = []) => {
     const { pageId, page, auth } = get();
     if (!pageId || !page) return;
     const sink = writeback.sinkFor(pageId, auth.status === "ready");
     const result = await writeback.convertBlockType(
-      pageId, page.blocks, blockId, newType, [], sink,
+      pageId, page.blocks, blockId, newType, richText, sink,
     );
     set({
       page: { ...page, blocks: result.blocks },
@@ -522,6 +532,34 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setFocusBlock: (blockId) => set({ focusBlockId: blockId }),
+
+  updatePageIcon: async (emoji) => {
+    const { pageId, page, auth } = get();
+    if (!pageId || !page) return;
+    const sink = writeback.sinkFor(pageId, auth.status === "ready");
+    const result = await writeback.updatePageIcon(
+      pageId, page.page, page.blocks, emoji, sink,
+    );
+    set({ page: { ...page, page: result.page }, writeError: null });
+    result.remote.catch((err) =>
+      set({ writeError: `Save failed: ${err instanceof Error ? err.message : err}` }),
+    );
+    // keep sidebar/frecency icons in sync
+    await get().recordOpen(pageId, { ...page, page: result.page });
+  },
+
+  updateTableCell: async (rowId, cellIndex, richText) => {
+    const { pageId, page, auth } = get();
+    if (!pageId || !page) return;
+    const sink = writeback.sinkFor(pageId, auth.status === "ready");
+    const result = await writeback.updateTableCell(
+      pageId, page.blocks, rowId, cellIndex, richText, sink,
+    );
+    set({ page: { ...page, blocks: result.blocks }, writeError: null });
+    result.remote.catch((err) =>
+      set({ writeError: `Save failed: ${err instanceof Error ? err.message : err}` }),
+    );
+  },
 
   toggleFocusMode: () => set({ focusMode: !get().focusMode }),
 
