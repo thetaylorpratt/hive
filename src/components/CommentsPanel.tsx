@@ -39,7 +39,7 @@ function Thread({ thread }: { thread: import("../lib/notionMcp").CommentThread }
   };
 
   return (
-    <div className="hive-comment-thread">
+    <div className="hive-comment-thread" data-thread-id={thread.id}>
       {thread.anchor && (
         <div className="anchor" title="Commented text on the page">
           {thread.anchor.replace("...", " … ")}
@@ -102,10 +102,30 @@ export function CommentsPanel() {
   const connectPersonalNotion = useAppStore((s) => s.connectPersonalNotion);
   const [draft, setDraft] = useState("");
 
-  // Reload when navigating with the panel open.
+  // Self-healing load: anything that nulls the threads (navigation, the
+  // stale-page refresh swapping the doc underneath us) triggers a reload —
+  // keyed on threads, not just pageId, so a refresh of the SAME page can't
+  // leave the panel blank.
   useEffect(() => {
-    if (pageId) void loadComments();
-  }, [pageId, loadComments]);
+    if (pageId && threads === null && !loading) void loadComments();
+  }, [pageId, threads, loading, loadComments]);
+
+  // A block's 💬 indicator was clicked — scroll its thread into view.
+  const focusThreadId = useAppStore((s) => s.focusThreadId);
+  useEffect(() => {
+    if (!focusThreadId || !threads?.length) return;
+    const el = document.querySelector(
+      `[data-thread-id="${CSS.escape(focusThreadId)}"]`,
+    );
+    if (!el) return;
+    el.scrollIntoView({ block: "center", behavior: "smooth" });
+    el.classList.add("flash");
+    const t = setTimeout(() => {
+      el.classList.remove("flash");
+      useAppStore.setState({ focusThreadId: null });
+    }, 1600);
+    return () => clearTimeout(t);
+  }, [focusThreadId, threads]);
 
   const realPage = pageId && pageId !== DEMO_PAGE_ID;
   const send = () => {

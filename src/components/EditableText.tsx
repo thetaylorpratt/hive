@@ -19,6 +19,44 @@ const CMD_OPT_TYPES: Record<string, string> = {
   Digit8: "code",
 };
 
+/** Block id embedded in a discussion:// url (discussion://page/BLOCK/id). */
+function threadBlockId(threadId: string): string | null {
+  return threadId.split("/")[3] ?? null;
+}
+
+/** Notion-style margin indicator on blocks that carry comment threads.
+ * Lives OUTSIDE the contentEditable div so the rich-text round-trip never
+ * sees it. Click → open the panel focused on this block's first thread. */
+function CommentDot({ blockId }: { blockId: string }) {
+  // primitive selector — a filtered array would re-render on every store tick
+  const count = useAppStore(
+    (s) =>
+      s.commentThreads?.filter(
+        (t) => t.comments.length > 0 && threadBlockId(t.id) === blockId,
+      ).length ?? 0,
+  );
+  const focusThread = useAppStore((s) => s.focusThread);
+  if (count === 0) return null;
+  return (
+    <button
+      className="hive-comment-dot"
+      contentEditable={false}
+      title={`${count} comment thread${count > 1 ? "s" : ""} — click to view`}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={() => {
+        const first = useAppStore
+          .getState()
+          .commentThreads?.find(
+            (t) => t.comments.length > 0 && threadBlockId(t.id) === blockId,
+          );
+        if (first) focusThread(first.id);
+      }}
+    >
+      💬{count > 1 ? count : ""}
+    </button>
+  );
+}
+
 /** The `:shortcode` under the caret, if any. */
 function emojiContext(): {
   node: Text;
@@ -500,6 +538,7 @@ export function EditableText({
 
   return (
     <span className="hive-editable-wrap">
+      <CommentDot blockId={block.id} />
       <div
         ref={ref}
         className="hive-editable"

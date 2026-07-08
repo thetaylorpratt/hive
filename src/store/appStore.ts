@@ -244,6 +244,8 @@ interface AppState {
   completeMcpAuth: (url: string) => Promise<void>;
   toggleComments: () => void;
   loadComments: () => Promise<void>;
+  focusThreadId: string | null;
+  focusThread: (threadId: string) => void;
   replyToThread: (discussionId: string, text: string) => Promise<void>;
   lastOpenInput: string | null;
   movePageOpen: boolean;
@@ -301,6 +303,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   commentUsers: {},
   lastOpenInput: null,
   movePageOpen: false,
+  focusThreadId: null,
   searchView: null,
 
   init: async () => {
@@ -428,6 +431,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     const title = pageTitle(page.page);
     const icon = pageEmoji(page.page);
     noteEditTime(pageId, page.page.last_edited_time as string | undefined);
+    // Background-load discussions so block 💬 indicators appear without
+    // opening the panel (personal connection only — REST can't see inline).
+    if (
+      pageId !== DEMO_PAGE_ID &&
+      get().mcpStatus === "connected" &&
+      get().commentThreads === null
+    ) {
+      void get().loadComments();
+    }
     await org.touchToday(activeSpaceId, pageId, title, icon);
     try {
       await recordHit(pageId, title, icon);
@@ -1185,6 +1197,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     const open = !get().commentsOpen;
     set({ commentsOpen: open });
     if (open) void get().loadComments();
+  },
+
+  focusThread: (threadId: string) => {
+    set({ commentsOpen: true, focusThreadId: threadId });
+    if (!get().commentThreads) void get().loadComments();
   },
 
   loadComments: async () => {

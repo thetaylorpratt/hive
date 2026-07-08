@@ -1,39 +1,33 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Hive icon v2 — recreation of Taylor's reference: navy field, floating
+       honeycomb hexes, layered skep in honey tones with an olive band, white
+       Notion-style N badge. -->
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#35c3d6"/>
-      <stop offset="1" stop-color="#1793ab"/>
-    </linearGradient>
-    <linearGradient id="hive" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#ffd24a"/>
-      <stop offset="1" stop-color="#ffab1f"/>
-    </linearGradient>
-    <linearGradient id="hiveShade" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#f5b52e"/>
-      <stop offset="1" stop-color="#e89610"/>
-    </linearGradient>
+    <clipPath id="squircle">
+      <rect x="0" y="0" width="1024" height="1024" rx="236"/>
+    </clipPath>
   </defs>
 
-  <!-- background -->
-  <rect x="0" y="0" width="1024" height="1024" rx="188" fill="url(#bg)"/>
+  <g clip-path="url(#squircle)">
+    <rect x="0" y="0" width="1024" height="1024" fill="#1a2a4a"/>
 
-  <!-- soft ground shadow -->
-  <ellipse cx="512" cy="852" rx="330" ry="42" fill="#0e6d80" opacity="0.45"/>
+    <!-- floating hexagons -->
+    <polygon points="300,190 341,213 341,260 300,283 259,260 259,213" fill="#2fa5dd"/>
+    <polygon points="906,285 949,309 949,358 906,382 863,358 863,309" fill="#f7941e"/>
+    <polygon points="168,560 206,582 206,626 168,648 130,626 130,582" fill="#aebf38"/>
 
-  <!-- skep beehive: stacked bands, widest at the base -->
-  <!-- dome cap -->
-  <path d="M 512 168 C 388 168 322 246 322 316 L 702 316 C 702 246 636 168 512 168 Z" fill="url(#hive)"/>
-  <!-- bands -->
-  <rect x="292" y="332" width="440" height="112" rx="56" fill="url(#hiveShade)"/>
-  <rect x="252" y="460" width="520" height="112" rx="56" fill="url(#hive)"/>
-  <rect x="222" y="588" width="580" height="112" rx="56" fill="url(#hiveShade)"/>
-  <rect x="202" y="716" width="620" height="124" rx="62" fill="url(#hive)"/>
+    <!-- skep: dome + bands, navy gaps between -->
+    <path d="M 512 158 C 398 158 342 232 342 296 L 682 296 C 682 232 626 158 512 158 Z" fill="#f5a81c"/>
+    <rect x="290" y="318" width="444" height="112" rx="56" fill="#f7941e"/>
+    <rect x="258" y="452" width="508" height="112" rx="56" fill="#fdb515"/>
+    <rect x="240" y="586" width="544" height="112" rx="56" fill="#aebf38"/>
+    <rect x="212" y="720" width="600" height="150" rx="66" fill="#f7941e"/>
 
-  <!-- entrance arch on the base band -->
-  <path d="M 448 840 L 448 796 C 448 758 476 734 512 734 C 548 734 576 758 576 796 L 576 840 Z" fill="#1f4d57"/>
+    <!-- entrance: navy doorway opening from the gap above the base band -->
+    <path d="M 448 700 L 576 700 L 576 800 C 576 826 552 840 512 840 C 472 840 448 826 448 800 Z" fill="#1a2a4a"/>
 
-  <!-- Notion-style N badge on the middle of the hive -->
-  <rect x="424" y="428" width="176" height="176" rx="30" fill="#ffffff"/>
-  <rect x="424" y="428" width="176" height="176" rx="30" fill="none" stroke="#1f4d57" stroke-opacity="0.18" stroke-width="6"/>
-  <text x="512" y="574" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-weight="bold" font-size="140" fill="#101010">N</text>
+    <!-- Notion-style N badge -->
+    <rect x="366" y="400" width="292" height="292" rx="52" fill="#ffffff" stroke="#1a2a4a" stroke-width="14"/>
+    <text x="512" y="640" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-weight="bold" font-size="230" fill="#101010">N</text>
+  </g>
 </svg>

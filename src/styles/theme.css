@@ -137,14 +137,29 @@ body {
   margin: 0.35em 0;
 }
 
-.hive-doc ul,
-.hive-doc ol {
+/* Tailwind's preflight zeroes list-style globally — restore real markers */
+.hive-doc ul {
+  list-style: disc;
   margin: 0.35em 0;
   padding-left: 1.5em;
+}
+.hive-doc ol {
+  list-style: decimal;
+  margin: 0.35em 0;
+  padding-left: 1.5em;
+}
+.hive-doc ul ul {
+  list-style: circle;
+}
+.hive-doc ul ul ul {
+  list-style: square;
 }
 
 .hive-doc li {
   margin: 0.15em 0;
+}
+.hive-doc li::marker {
+  color: var(--hive-color-fg-secondary);
 }
 
 .hive-doc a {
@@ -1985,6 +2000,34 @@ tr:hover .hive-row-gutter {
 }
 .hive-comments .identity .as-bot {
   color: var(--hive-color-fg-muted);
+}
+
+/* Notion-style margin indicator on commented blocks */
+.hive-editable-wrap {
+  position: relative;
+}
+.hive-comment-dot {
+  position: absolute;
+  right: -44px;
+  top: 0.1em;
+  border: none;
+  background: var(--hive-color-bg-subtle);
+  border: 1px solid var(--hive-color-border-subtle);
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-size: 0.72rem;
+  cursor: pointer;
+  opacity: 0.75;
+  user-select: none;
+}
+.hive-comment-dot:hover {
+  opacity: 1;
+  background: var(--hive-color-warning-bg);
+}
+.hive-comment-thread.flash {
+  outline: 2px solid var(--hive-color-accent);
+  outline-offset: 1px;
+  transition: outline-color 300ms ease;
 }
 
 .hive-comment-thread .reactions {
