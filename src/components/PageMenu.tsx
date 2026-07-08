@@ -80,6 +80,8 @@ export function PageMenu({ onClose }: { onClose: () => void }) {
             void store.getState().movePageToSpace(pageId, sp.id);
           }),
         )}
+      {realPage &&
+        item("Move to another page…", () => store.getState().setMovePageOpen(true))}
       {item("New sub-page", () => void store.getState().createPage(pageId))}
       <div className="sep" />
       {realPage &&

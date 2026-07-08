@@ -245,6 +245,10 @@ interface AppState {
   toggleComments: () => void;
   loadComments: () => Promise<void>;
   replyToThread: (discussionId: string, text: string) => Promise<void>;
+  lastOpenInput: string | null;
+  movePageOpen: boolean;
+  setMovePageOpen: (open: boolean) => void;
+  movePageInNotion: (parent: { pageId: string } | "workspace") => Promise<void>;
   setDisplayPref: (key: "smallText" | "fullWidth", value: boolean) => void;
   movePageToSpace: (pageId: string, spaceId: string) => Promise<void>;
   createPage: (parentId: string | null) => Promise<void>;
@@ -294,6 +298,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   commentThreads: null,
   commentsLoading: false,
   commentUsers: {},
+  lastOpenInput: null,
+  movePageOpen: false,
   searchView: null,
 
   init: async () => {
@@ -362,6 +368,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   openPage: async (input: string) => {
     if (input === DEMO_PAGE_ID) return get().openDemo();
     const nav = ++navSeq;
+    set({ lastOpenInput: input });
     const pageId = normalizePageId(input);
     if (!pageId) {
       set({ pageStatus: "error", pageError: "That doesn't look like a Notion page ID or URL." });
@@ -992,41 +999,59 @@ export const useAppStore = create<AppState>((set, get) => ({
       get().showToast("Creating pages needs the Notion token");
       return;
     }
-    try {
-      let parent = parentId;
-      if (!parent || parent === DEMO_PAGE_ID) {
-        // Top-level "New page": the private scratchpad wins, then the
-        // capture page. Both must be shared with the integration so the
-        // created page is also readable back in Hive.
-        const config = await loadConfig();
-        parent = config.scratchpad_page_id ?? config.capture_page_id ?? null;
+    // Top-level "New page": try the private scratchpad first, then the
+    // capture page. Both must be shared with the integration so the created
+    // page is readable back in Hive; an unshared scratchpad just falls
+    // through to the next candidate.
+    let candidates: string[];
+    if (parentId && parentId !== DEMO_PAGE_ID) {
+      candidates = [parentId];
+    } else {
+      const config = await loadConfig().catch(() => null);
+      candidates = [
+        ...new Set(
+          [config?.scratchpad_page_id, config?.capture_page_id].filter(
+            (p): p is string => !!p,
+          ),
+        ),
+      ];
+    }
+    let lastError: unknown = null;
+    for (const parent of candidates) {
+      try {
+        const created = (await enqueue(() =>
+          notion().pages.create({
+            parent: { page_id: parent },
+            properties: { title: { title: [{ text: { content: "Untitled" } }] } },
+          }),
+        )) as { id: string };
+        await get().openPage(created.id);
+        get().showToast("Page created — click the title to name it");
+        return;
+      } catch (err) {
+        lastError = err;
       }
-      if (!parent && get().mcpStatus === "connected") {
-        // Last resort: create a parent-less page AS THE USER — it lands in
-        // their Private section, but the integration can't read it back, so
-        // Hive can only hand it off to Notion.
+    }
+    if (get().mcpStatus === "connected") {
+      // Last resort: create a parent-less page AS THE USER — it lands in
+      // their Private section, but the integration can't read it back, so
+      // Hive can only hand it off to Notion.
+      try {
         const id = await mcp.createPrivatePage("Untitled");
         if (id) {
           get().showToast("Created in your Private pages — share it with the integration to edit here");
           void invoke("open_in_notion", { pageId: id }).catch(() => undefined);
           return;
         }
+      } catch (err) {
+        lastError = err;
       }
-      if (!parent) {
-        get().showToast("No parent page — set scratchpadPageId or capturePageId in config");
-        return;
-      }
-      const created = (await enqueue(() =>
-        notion().pages.create({
-          parent: { page_id: parent },
-          properties: { title: { title: [{ text: { content: "Untitled" } }] } },
-        }),
-      )) as { id: string };
-      await get().openPage(created.id);
-      get().showToast("Page created — click the title to name it");
-    } catch (err) {
-      get().showToast(`Create failed: ${err instanceof Error ? err.message : err}`);
     }
+    get().showToast(
+      lastError
+        ? `Create failed: ${lastError instanceof Error ? lastError.message : lastError}`
+        : "No parent page — set scratchpadPageId or capturePageId in config",
+    );
   },
 
   updatePageTitle: async (title: string) => {
@@ -1197,6 +1222,7 @@ export const useAppStore = create<AppState>((set, get) => ({
               anchor: null,
               resolved: false,
               comments: [entry],
+              reactions: [],
             });
         }
         threads = [...byDiscussion.values()];
@@ -1228,6 +1254,30 @@ export const useAppStore = create<AppState>((set, get) => ({
       get().showToast(
         `Couldn't load comments: ${err instanceof Error ? err.message : err}`,
       );
+    }
+  },
+
+  setMovePageOpen: (open: boolean) => set({ movePageOpen: open }),
+
+  movePageInNotion: async (parent: { pageId: string } | "workspace") => {
+    const { pageId, mcpStatus } = get();
+    if (!pageId || pageId === DEMO_PAGE_ID) return;
+    if (mcpStatus !== "connected") {
+      get().showToast("Moving pages needs your personal Notion connection (comments panel → connect)");
+      return;
+    }
+    try {
+      await mcp.movePageAsUser(pageId, parent);
+      const { invalidateBreadcrumbs } = await import("../lib/breadcrumbs");
+      invalidateBreadcrumbs(pageId);
+      set({ movePageOpen: false });
+      get().showToast(
+        parent === "workspace" ? "Moved to your Private pages" : "Page moved",
+      );
+      // reopen so the parent chain and sub-pages reflect the new home
+      void get().openPage(pageId);
+    } catch (err) {
+      get().showToast(`Move failed: ${err instanceof Error ? err.message : err}`);
     }
   },
 

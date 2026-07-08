@@ -10,6 +10,7 @@ import { PropertiesHeader } from "./components/PropertiesHeader";
 import { PeekLayer } from "./components/PeekLayer";
 import { SplitPane } from "./components/SplitPane";
 import { CommentsPanel } from "./components/CommentsPanel";
+import { MovePageModal } from "./components/MovePageModal";
 import { InboxPanel } from "./components/InboxPanel";
 import { CaptureModal } from "./components/CaptureModal";
 import { HomeScreen } from "./components/HomeScreen";
@@ -97,6 +98,40 @@ function PageIcon({ emoji }: { emoji: string | null }) {
         </span>
       )}
     </span>
+  );
+}
+
+/** On a failed page load, hand the link off to something that CAN open it —
+ * the native Notion app or the fallback browser (the user's own permissions
+ * apply there, unlike the integration's). */
+function ErrorEscapeHatches() {
+  const lastOpenInput = useAppStore((s) => s.lastOpenInput);
+  if (!lastOpenInput) return null;
+  const id = normalizePageId(lastOpenInput);
+  const webUrl = /^https?:\/\//i.test(lastOpenInput)
+    ? lastOpenInput
+    : id
+      ? `https://www.notion.so/${id.replace(/-/g, "")}`
+      : null;
+  return (
+    <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
+      {id && (
+        <button
+          className="hive-btn hive-btn-secondary"
+          onClick={() => void invoke("open_in_notion", { pageId: id }).catch(() => undefined)}
+        >
+          Open in Notion app
+        </button>
+      )}
+      {webUrl && (
+        <button
+          className="hive-btn hive-btn-secondary"
+          onClick={() => void invoke("forward_url", { url: webUrl }).catch(() => undefined)}
+        >
+          Open in browser
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -327,6 +362,7 @@ function Content() {
           Make sure the page is shared with your integration (Notion → page →
           Connections).
         </p>
+        <ErrorEscapeHatches />
       </Notice>
     );
   }
@@ -347,6 +383,7 @@ export default function App() {
   const sidebarVisible = useAppStore((s) => s.sidebarVisible);
   const split = useAppStore((s) => s.split);
   const commentsOpen = useAppStore((s) => s.commentsOpen);
+  const movePageOpen = useAppStore((s) => s.movePageOpen);
 
   useEffect(() => {
     void init();
@@ -424,6 +461,7 @@ export default function App() {
           {commentsOpen && <CommentsPanel />}
         </div>
       </div>
+      {movePageOpen && <MovePageModal />}
       <CommandBar />
       <MruSwitcher />
       <Toast />

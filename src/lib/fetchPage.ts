@@ -14,12 +14,15 @@ const NO_RECURSE = new Set(["child_page", "child_database", "synced_block"]);
  * or null if no 32-hex ID is present.
  */
 export function normalizePageId(input: string): string | null {
-  const match = input
-    .trim()
-    .replace(/-/g, "")
-    .match(/[0-9a-f]{32}/i);
-  if (!match) return null;
-  const id = match[0].toLowerCase();
+  let s = input.trim();
+  // For URLs, only the path holds the page id — query params carry their
+  // own hex ids (?d= discussion anchors, ?v= views) that must not win.
+  if (/^https?:\/\//i.test(s)) s = s.split(/[?#]/)[0];
+  const runs = s.replace(/-/g, "").match(/[0-9a-f]{32,}/gi);
+  if (!runs) return null;
+  // Title slugs can end in hex-looking characters that prefix the id's hex
+  // run — the real id is the TAIL of the LAST run, never the head.
+  const id = runs[runs.length - 1].toLowerCase().slice(-32);
   return `${id.slice(0, 8)}-${id.slice(8, 12)}-${id.slice(12, 16)}-${id.slice(16, 20)}-${id.slice(20)}`;
 }
 

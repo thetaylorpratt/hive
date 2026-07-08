@@ -13,6 +13,11 @@ export interface Crumb {
 
 const chainCache = new Map<string, Crumb[]>();
 
+/** Drop a cached chain (after moving a page to a new parent). */
+export function invalidateBreadcrumbs(pageId: string): void {
+  chainCache.delete(pageId);
+}
+
 type Parent =
   | { type: "page_id"; page_id: string }
   | { type: "database_id"; database_id: string }

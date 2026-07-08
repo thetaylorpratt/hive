@@ -382,6 +382,24 @@ export interface CommentThread {
   anchor: string | null; // text-context snippet for inline threads
   resolved: boolean;
   comments: CommentEntry[];
+  // Emoji reactions are read-only: neither the REST API nor the MCP server
+  // exposes a way to create them, so Hive displays but can't add them.
+  reactions: { emoji: string; count: number }[];
+}
+
+/** Move a page (or database) under a new parent page, or to the user's
+ * workspace-level Private pages — as the user, via notion-move-pages. */
+export async function movePageAsUser(
+  pageId: string,
+  parent: { pageId: string } | "workspace",
+): Promise<void> {
+  await callTool("notion-move-pages", {
+    page_or_database_ids: [pageId],
+    new_parent:
+      parent === "workspace"
+        ? { type: "workspace" }
+        : { type: "page_id", page_id: parent.pageId },
+  });
 }
 
 /** Fetch and parse all discussions on a page (incl. block-anchored ones). */
@@ -401,7 +419,12 @@ export function parseDiscussions(xml: string): CommentThread[] {
   const doc = new DOMParser().parseFromString(xml, "text/html");
   const threads: CommentThread[] = [];
   for (const d of doc.querySelectorAll("discussion")) {
-    if (d.getAttribute("type") === "reaction") continue;
+    const reactionCounts = new Map<string, number>();
+    for (const r of d.querySelectorAll("reaction")) {
+      const emoji = r.getAttribute("emoji");
+      if (emoji) reactionCounts.set(emoji, (reactionCounts.get(emoji) ?? 0) + 1);
+    }
+    const reactions = [...reactionCounts].map(([emoji, count]) => ({ emoji, count }));
     const comments: CommentEntry[] = [];
     for (const c of d.querySelectorAll("comment")) {
       let text = "";
@@ -421,13 +444,14 @@ export function parseDiscussions(xml: string): CommentThread[] {
         text: text.trim(),
       });
     }
-    if (comments.length === 0) continue;
+    if (comments.length === 0 && reactions.length === 0) continue;
     threads.push({
       id: d.getAttribute("id") ?? "",
       context: d.getAttribute("context") === "inline" ? "inline" : "page",
       anchor: d.getAttribute("text-context"),
       resolved: d.getAttribute("resolved") === "true",
       comments,
+      reactions,
     });
   }
   return threads;

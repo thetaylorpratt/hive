@@ -1987,6 +1987,92 @@ tr:hover .hive-row-gutter {
   color: var(--hive-color-fg-muted);
 }
 
+.hive-comment-thread .reactions {
+  display: flex;
+  gap: 5px;
+  margin: 2px 0 6px;
+}
+.hive-comment-thread .reactions .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: var(--hive-color-bg-subtle);
+  border: 1px solid var(--hive-color-border-subtle);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 0.8rem;
+}
+.hive-comment-thread .reactions .n {
+  font-size: 0.7rem;
+  color: var(--hive-color-fg-muted);
+}
+
+/* Move-page modal */
+.hive-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 700;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 15vh;
+}
+.hive-move-modal {
+  width: 420px;
+  background: var(--hive-color-bg-surface);
+  border: 1px solid var(--hive-color-border);
+  border-radius: var(--hive-radius-lg);
+  box-shadow: var(--hive-shadow-lg, 0 3px 12px rgba(0, 0, 0, 0.2), 0 0 4px rgba(0, 0, 0, 0.1));
+  padding: 14px;
+  animation: hive-menu-in 150ms ease-out;
+}
+.hive-move-modal .title {
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin-bottom: 10px;
+}
+.hive-move-modal .hint {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--hive-color-fg-secondary);
+  font-size: 0.85rem;
+}
+.hive-move-modal .rows {
+  margin-top: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.hive-move-modal .row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  padding: 7px 8px;
+  border-radius: var(--hive-radius-sm);
+  font-size: 0.85rem;
+  color: var(--hive-color-fg-primary);
+}
+.hive-move-modal .row:hover {
+  background: var(--hive-color-bg-subtle);
+}
+.hive-move-modal .row .t {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hive-move-modal .none {
+  color: var(--hive-color-fg-muted);
+  font-size: 0.8rem;
+  padding: 10px 8px;
+}
+
 /* Sidebar top row: space name + new page */
 .hive-side-toprow {
   display: flex;

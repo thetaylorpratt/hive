@@ -55,7 +55,18 @@ function Thread({ thread }: { thread: import("../lib/notionMcp").CommentThread }
           <div className="text">{c.text.replace(/\*{1,3}|__/g, "")}</div>
         </div>
       ))}
-      {replying ? (
+      {thread.reactions.length > 0 && (
+        <div className="reactions" title="Reactions are read-only — the Notion API can't add them">
+          {thread.reactions.map((r) => (
+            <span key={r.emoji} className="chip">
+              {r.emoji}
+              {r.count > 1 && <span className="n">{r.count}</span>}
+            </span>
+          ))}
+        </div>
+      )}
+      {thread.comments.length > 0 &&
+        (replying ? (
         <div className="reply-row">
           <input
             className="hive-input"
@@ -76,7 +87,7 @@ function Thread({ thread }: { thread: import("../lib/notionMcp").CommentThread }
         <button className="reply-link" onClick={() => setReplying(true)}>
           Reply
         </button>
-      )}
+      ))}
     </div>
   );
 }
