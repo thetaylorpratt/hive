@@ -132,6 +132,7 @@ interface AppState {
   shortcutSheetOpen: boolean;
   peek: { pageId: string; anchorY: number } | null;
   breadcrumbs: Crumb[];
+  split: { pageId: string; data: PageData | null } | null;
   searchView: {
     query: string;
     results: { pageId: string; title: string; icon: string | null; source: "notion" | "cached"; snippet?: string }[];
@@ -201,6 +202,8 @@ interface AppState {
   refreshCurrentIfStale: () => Promise<void>;
   dismissDiff: (pageId: string) => void;
   setShortcutSheetOpen: (open: boolean) => void;
+  openInSplit: (pageId: string) => Promise<void>;
+  closeSplit: () => void;
   openSearch: (query: string) => Promise<void>;
   loadMoreSearch: () => Promise<void>;
   closeSearch: () => void;
@@ -234,6 +237,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   shortcutSheetOpen: false,
   peek: null,
   breadcrumbs: [],
+  split: null,
   searchView: null,
 
   init: async () => {
@@ -813,6 +817,34 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setShortcutSheetOpen: (open: boolean) => set({ shortcutSheetOpen: open }),
+
+  openInSplit: async (pageId: string) => {
+    let cached: PageData | null = null;
+    try {
+      cached = await loadCached(pageId);
+    } catch { /* no cache */ }
+    if (!cached) {
+      const s = get();
+      if (s.pageId === pageId && s.page) cached = s.page;
+      else if (pageId === DEMO_PAGE_ID) {
+        cached = {
+          page: demoPage, blocks: demoBlocks,
+          fetchedAt: new Date().toISOString(), fromCache: false,
+        };
+      }
+    }
+    set({ split: { pageId, data: cached } });
+    if (get().auth.status === "ready" && pageId !== DEMO_PAGE_ID) {
+      try {
+        const fresh = await fetchFresh(pageId);
+        if (get().split?.pageId === pageId) {
+          set({ split: { pageId, data: fresh } });
+        }
+      } catch { /* keep cached */ }
+    }
+  },
+
+  closeSplit: () => set({ split: null }),
 
   openSearch: async (query: string) => {
     const q = query.trim();

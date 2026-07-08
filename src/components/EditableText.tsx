@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
+import { ReadOnlyContext } from "./BlockRenderer";
 import { useAppStore } from "../store/appStore";
 import { htmlToRichText, richTextToHtml } from "../lib/richTextHtml";
 import { searchEmoji } from "../lib/emoji";
@@ -177,7 +178,8 @@ export function EditableText({
   block: HiveBlock;
   items: RichTextItem[];
 }) {
-  const canEdit = useAppStore((s) => s.canEdit());
+  const readOnly = useContext(ReadOnlyContext);
+  const canEdit = useAppStore((s) => s.canEdit()) && !readOnly;
   const editBlockText = useAppStore((s) => s.editBlockText);
   const insertParagraphAfter = useAppStore((s) => s.insertParagraphAfter);
   const convertBlock = useAppStore((s) => s.convertBlock);

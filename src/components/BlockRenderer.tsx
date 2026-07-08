@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import katex from "katex";
 import { htmlToRichText, richTextToHtml } from "../lib/richTextHtml";
@@ -15,6 +15,9 @@ import { useAppStore } from "../store/appStore";
  * call sites never change. Anything not in the table renders the Tier 3
  * fallback card. Renderers must never throw: SafeBlock catches and degrades.
  */
+
+/** Panes (split view, peek) render read-only regardless of canEdit. */
+export const ReadOnlyContext = createContext(false);
 
 type BlockComponent = (props: { block: HiveBlock }) => ReactNode;
 
@@ -75,7 +78,8 @@ function HeadingBlock({ block, level }: { block: HiveBlock; level: 1 | 2 | 3 }) 
 
 function TodoBlock({ block }: { block: HiveBlock }) {
   const toggleTodo = useAppStore((s) => s.toggleTodo);
-  const canEdit = useAppStore((s) => s.canEdit());
+  const readOnly = useContext(ReadOnlyContext);
+  const canEdit = useAppStore((s) => s.canEdit()) && !readOnly;
   const payload = block.to_do as { checked?: boolean } | undefined;
   const done = payload?.checked ?? false;
   return (
@@ -198,7 +202,8 @@ function TableCell({
   index: number;
   items: RichTextItem[];
 }) {
-  const canEdit = useAppStore((s) => s.canEdit());
+  const readOnly = useContext(ReadOnlyContext);
+  const canEdit = useAppStore((s) => s.canEdit()) && !readOnly;
   const updateTableCell = useAppStore((s) => s.updateTableCell);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -237,7 +242,8 @@ function TableCell({
 }
 
 function SimpleTable({ block }: { block: HiveBlock }) {
-  const canEdit = useAppStore((s) => s.canEdit());
+  const readOnly = useContext(ReadOnlyContext);
+  const canEdit = useAppStore((s) => s.canEdit()) && !readOnly;
   const addTableRow = useAppStore((s) => s.addTableRow);
   const setTableColumns = useAppStore((s) => s.setTableColumns);
   const updateTableSettings = useAppStore((s) => s.updateTableSettings);

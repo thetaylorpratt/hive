@@ -8,6 +8,7 @@ import { MruSwitcher } from "./components/MruSwitcher";
 import { Toast } from "./components/Toast";
 import { PropertiesHeader } from "./components/PropertiesHeader";
 import { PeekLayer } from "./components/PeekLayer";
+import { SplitPane } from "./components/SplitPane";
 import { OutlineRail } from "./components/OutlineRail";
 import { ShortcutSheet } from "./components/ShortcutSheet";
 import { installKeymap } from "./lib/keymap";
@@ -326,6 +327,7 @@ function Content() {
 export default function App() {
   const init = useAppStore((s) => s.init);
   const sidebarVisible = useAppStore((s) => s.sidebarVisible);
+  const split = useAppStore((s) => s.split);
 
   useEffect(() => {
     void init();
@@ -386,10 +388,13 @@ export default function App() {
       {sidebarVisible && <Sidebar />}
       <div className="flex min-w-0 flex-1 flex-col">
         <Header />
-        <main className="relative flex-1 overflow-y-auto">
-          <Content />
-          <OutlineRail />
-        </main>
+        <div className="flex min-h-0 flex-1">
+          <main className="relative flex-1 overflow-y-auto">
+            <Content />
+            <OutlineRail />
+          </main>
+          {split && <SplitPane />}
+        </div>
       </div>
       <CommandBar />
       <MruSwitcher />

@@ -113,6 +113,11 @@ function useActions(): Result[] {
   ];
   if (pageOpen) {
     actions.push(
+      action("Open current doc in right split", "⫲", () => {
+        const s = store.getState();
+        if (s.pageId) void s.openInSplit(s.pageId);
+      }),
+      action("Close split", "⫱", () => store.getState().closeSplit()),
       action("Pin current doc", "📌", () => void pinCurrent("pinned")),
       action("Favorite current doc", "★", () => void pinCurrent("favorite")),
     );
