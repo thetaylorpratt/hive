@@ -75,6 +75,22 @@ fn forward_url(url: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Escape hatch: open a page in the native Notion app via its notion://
+/// protocol — immune to browser routing (https links would boomerang back
+/// into Hive once Hive is the default browser).
+#[tauri::command]
+fn open_in_notion(page_id: String) -> Result<(), String> {
+    let clean: String = page_id.chars().filter(|c| c.is_ascii_hexdigit()).collect();
+    if clean.len() != 32 {
+        return Err("not a Notion page id".into());
+    }
+    std::process::Command::new("open")
+        .arg(format!("notion://www.notion.so/{clean}"))
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Unread-count badge on the macOS dock icon (Notifications Tier A).
 #[tauri::command]
 fn set_badge(app: tauri::AppHandle, count: i64) {
@@ -200,7 +216,8 @@ pub fn run() {
             get_config,
             open_embed,
             set_badge,
-            forward_url
+            forward_url,
+            open_in_notion
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -119,11 +119,12 @@ function useActions(): Result[] {
   if (realPage) {
     actions.push(
       action("Open current doc in Notion", "↗", () => {
-        const id = store.getState().pageId!.replace(/-/g, "");
-        const url = `https://www.notion.so/${id}`;
-        void import("@tauri-apps/plugin-opener")
-          .then((m) => m.openUrl(url))
-          .catch(() => window.open(url, "_blank"));
+        const id = store.getState().pageId!;
+        void import("@tauri-apps/api/core")
+          .then((m) => m.invoke("open_in_notion", { pageId: id }))
+          .catch(() =>
+            window.open(`https://www.notion.so/${id.replace(/-/g, "")}`, "_blank"),
+          );
       }),
     );
   }
