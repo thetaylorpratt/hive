@@ -288,9 +288,13 @@ function InboxBell() {
   const count = useAppStore((s) => s.inbox.length);
   const setInboxOpen = useAppStore((s) => s.setInboxOpen);
   return (
-    <button className="hive-inbox-bell" onClick={() => setInboxOpen(true)} title="Comments & mentions inbox">
-      <Bell size={14} weight={count > 0 ? "fill" : "regular"} style={{ marginRight: 5 }} />
-      Inbox{count > 0 && <span className="hive-space-badge" style={{ position: "static", marginLeft: 6 }}>{count}</span>}
+    <button
+      className="hive-newpage-btn hive-inbox-iconbtn"
+      onClick={() => setInboxOpen(true)}
+      title={`Comments & mentions inbox${count > 0 ? ` (${count})` : ""}`}
+    >
+      <Bell size={15} weight={count > 0 ? "fill" : "bold"} />
+      {count > 0 && <span className="hive-space-badge">{count}</span>}
     </button>
   );
 }
@@ -354,6 +358,7 @@ export function Sidebar() {
       >
       <div className="hive-side-toprow">
         <SpaceName />
+        <InboxBell />
         <button
           className="hive-newpage-btn"
           title="New page (in your scratchpad)"
@@ -362,7 +367,6 @@ export function Sidebar() {
           <PencilSimpleLine size={15} weight="bold" />
         </button>
       </div>
-      <InboxBell />
 
       {favorites.length > 0 && (
         <div className="hive-fav-row">

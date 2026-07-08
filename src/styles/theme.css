@@ -2096,6 +2096,13 @@ tr:hover .hive-row-gutter {
   background: var(--hive-color-bg-subtle);
   color: var(--hive-color-fg-primary);
 }
+.hive-inbox-iconbtn {
+  position: relative;
+}
+.hive-inbox-iconbtn .hive-space-badge {
+  top: -3px;
+  right: -3px;
+}
 
 .hive-nav-btn.active {
   color: var(--hive-color-accent);

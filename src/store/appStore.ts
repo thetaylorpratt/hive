@@ -249,6 +249,7 @@ interface AppState {
   movePageOpen: boolean;
   setMovePageOpen: (open: boolean) => void;
   movePageInNotion: (parent: { pageId: string } | "workspace") => Promise<void>;
+  deletePage: () => Promise<void>;
   setDisplayPref: (key: "smallText" | "fullWidth", value: boolean) => void;
   movePageToSpace: (pageId: string, spaceId: string) => Promise<void>;
   createPage: (parentId: string | null) => Promise<void>;
@@ -1278,6 +1279,33 @@ export const useAppStore = create<AppState>((set, get) => ({
       void get().openPage(pageId);
     } catch (err) {
       get().showToast(`Move failed: ${err instanceof Error ? err.message : err}`);
+    }
+  },
+
+  deletePage: async () => {
+    const { pageId, auth, page } = get();
+    if (!pageId || pageId === DEMO_PAGE_ID || auth.status !== "ready") return;
+    const title = page ? pageTitle(page.page) : "page";
+    try {
+      // Notion's API can't hard-delete — archived: true IS "move to trash"
+      // (restorable from Notion's Trash for 30 days, or via undo here).
+      await enqueue(() =>
+        notion().pages.update({ page_id: pageId, archived: true } as never),
+      );
+      for (const item of get().sidebarItems.filter((i) => i.notionPageId === pageId)) {
+        await get().removeItem(item.id);
+      }
+      set({ pageId: null, page: null, pageStatus: "idle", pageError: null });
+      get().showToast(`“${title}” moved to Notion's trash`, async () => {
+        await enqueue(() =>
+          notion().pages.update({ page_id: pageId, archived: false } as never),
+        );
+        await get().openPage(pageId);
+      });
+    } catch (err) {
+      get().showToast(
+        `Delete failed: ${err instanceof Error ? err.message : err}`,
+      );
     }
   },
 

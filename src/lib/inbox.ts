@@ -42,8 +42,8 @@ export function markRead(id: string) {
   localStorage.setItem(READ_KEY, JSON.stringify([...readIds].slice(-2000)));
 }
 
-async function pollOnce(onChange: () => void) {
-  if (!queueIdle()) return;
+async function pollOnce(onChange: () => void, force = false) {
+  if (!force && !queueIdle()) return;
   const watched = await listAllWatched();
   const unique = [...new Set(watched.map((w) => w.notionPageId).filter((id) => id !== DEMO_PAGE_ID))];
   if (unique.length === 0) return;
@@ -95,5 +95,7 @@ export function startInbox(userId: string | null, onChange: () => void) {
     void Notification.requestPermission();
   }
   timer = setInterval(() => void pollOnce(onChange), POLL_MS);
-  setTimeout(() => void pollOnce(onChange), 20_000);
+  // First poll runs soon and unconditionally — waiting for a quiet queue
+  // meant the inbox often stayed empty all session.
+  setTimeout(() => void pollOnce(onChange, true), 5_000);
 }

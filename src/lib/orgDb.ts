@@ -203,16 +203,18 @@ export async function listSidebar(spaceId: string): Promise<SidebarItem[]> {
     .sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
-/** Favorites + pins across ALL Spaces — the attention engine's watch list. */
+/** Favorites + pins + today across ALL Spaces — the attention engine's
+ * watch list. Today counts: docs you touched recently are exactly the ones
+ * whose comments you want surfaced. */
 export async function listAllWatched(): Promise<SidebarItem[]> {
   if ((await backend()) === "sql") {
     const rows = await db!.select<ItemRow[]>(
-      "SELECT * FROM sidebar_item WHERE tier IN ('favorite', 'pinned')",
+      "SELECT * FROM sidebar_item WHERE tier IN ('favorite', 'pinned', 'today')",
     );
     return rows.map(itemFromRow);
   }
   return local!.items.filter(
-    (i) => i.tier === "favorite" || i.tier === "pinned",
+    (i) => i.tier === "favorite" || i.tier === "pinned" || i.tier === "today",
   );
 }
 

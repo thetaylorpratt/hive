@@ -85,6 +85,8 @@ export function PageMenu({ onClose }: { onClose: () => void }) {
       {item("New sub-page", () => void store.getState().createPage(pageId))}
       <div className="sep" />
       {realPage &&
+        item("Move to trash", () => void store.getState().deletePage())}
+      {realPage &&
         item("Open in Notion", () => {
           void import("@tauri-apps/api/core").then((m) =>
             m.invoke("open_in_notion", { pageId }),
