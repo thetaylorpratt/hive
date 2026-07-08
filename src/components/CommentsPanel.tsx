@@ -11,7 +11,9 @@ import { DEMO_PAGE_ID } from "../lib/demoPage";
  */
 
 function timeAgo(iso: string): string {
-  const ms = Date.now() - new Date(iso).getTime();
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return "";
+  const ms = Date.now() - t;
   const mins = Math.floor(ms / 60_000);
   if (mins < 1) return "now";
   if (mins < 60) return `${mins}m`;
@@ -50,7 +52,7 @@ function Thread({ thread }: { thread: import("../lib/notionMcp").CommentThread }
             {users[c.authorId] ?? "…"}
             <span className="when">{c.time ? timeAgo(c.time) : ""}</span>
           </span>
-          <div className="text">{c.text}</div>
+          <div className="text">{c.text.replace(/\*{1,3}|__/g, "")}</div>
         </div>
       ))}
       {replying ? (

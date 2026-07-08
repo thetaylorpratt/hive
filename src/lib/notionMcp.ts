@@ -327,6 +327,18 @@ export async function callTool(
 
 // ---------- High-level operations ----------
 
+/** Tool results arrive as a JSON envelope ({"text": "<xml...>"}) — unwrap
+ * it, or pass through if a tool ever returns the payload bare. */
+function unwrapToolText(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw) as { text?: unknown };
+    if (parsed && typeof parsed.text === "string") return parsed.text;
+  } catch {
+    /* already plain text */
+  }
+  return raw;
+}
+
 /** ~10 chars from each end — the MCP selection anchor format. */
 export function selectionEllipsis(quote: string): string {
   const clean = quote.trim();
@@ -348,9 +360,11 @@ export async function createCommentAsUser(
 /** Create a parent-less page → lands in the user's workspace-level Private
  * pages (exactly Notion's "Private" sidebar section). Returns the page id. */
 export async function createPrivatePage(title: string): Promise<string | null> {
-  const text = await callTool("notion-create-pages", {
-    pages: [{ properties: { title } }],
-  });
+  const text = unwrapToolText(
+    await callTool("notion-create-pages", {
+      pages: [{ properties: { title } }],
+    }),
+  );
   const match = text.match(/[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}/i);
   return match ? match[0].replace(/-/g, "") : null;
 }
@@ -372,10 +386,12 @@ export interface CommentThread {
 
 /** Fetch and parse all discussions on a page (incl. block-anchored ones). */
 export async function getCommentsAsUser(pageId: string): Promise<CommentThread[]> {
-  const xml = await callTool("notion-get-comments", {
-    page_id: pageId,
-    include_all_blocks: true,
-  });
+  const xml = unwrapToolText(
+    await callTool("notion-get-comments", {
+      page_id: pageId,
+      include_all_blocks: true,
+    }),
+  );
   return parseDiscussions(xml);
 }
 
