@@ -588,6 +588,22 @@ export function EditableText({
             }}
             onBlur={() => setCommentInput(false)}
           />
+          <button
+            className="hive-comment-native"
+            title="Open this page in the Notion app, where comments can anchor to the exact text"
+            onMouseDown={(e) => {
+              e.preventDefault(); // fire before the input's blur closes us
+              setCommentInput(false);
+              const pageId = useAppStore.getState().pageId;
+              if (pageId) {
+                void import("@tauri-apps/api/core").then((m) =>
+                  m.invoke("open_in_notion", { pageId }),
+                );
+              }
+            }}
+          >
+            Comment natively in Notion ↗
+          </button>
         </div>
       )}
       {linkInput && (

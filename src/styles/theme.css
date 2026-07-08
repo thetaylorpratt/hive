@@ -364,6 +364,22 @@ tr:hover .hive-row-gutter {
 .hive-link-input .hive-input {
   width: 260px;
 }
+.hive-comment-native {
+  font: inherit;
+  font-size: 0.75rem;
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  border: none;
+  background: none;
+  color: var(--hive-color-accent);
+  cursor: pointer;
+  text-align: left;
+  padding: 4px 2px 0;
+}
+.hive-comment-native:hover {
+  text-decoration: underline;
+}
 .hive-table-controls button.on {
   color: var(--hive-color-accent);
   border-color: var(--hive-color-accent);
