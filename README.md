@@ -34,11 +34,18 @@ Requirements: **Apple Silicon** Mac (the release DMG is aarch64-only).
    xattr -dr com.apple.quarantine /Applications/Hive.app
    ```
 
-3. Create a Notion **internal integration** at notion.so/my-integrations
-   (needs read/update/insert content + read comments + insert comments +
-   read user information) and share the pages/teamspaces you care about
-   with it (page → ⋯ → Connections; teamspace-level sharing inherits down).
-4. Create `~/.hive/config.json` (chmod 600 recommended):
+3. Connect Notion — two paths:
+   - **Sign in with Notion** (if this build has OAuth credentials baked in):
+     launch Hive and click the button on the welcome screen. Notion's own
+     consent page lets you pick which pages Hive can see — no token, no IT
+     ticket. You can widen access later from Notion's Connections settings.
+   - **Manual token**: create an internal integration at
+     notion.so/my-integrations (read/update/insert content + read/insert
+     comments + read user information), share pages/teamspaces with it
+     (page → ⋯ → Connections; teamspace sharing inherits down), and put the
+     token in the config below.
+4. Optional `~/.hive/config.json` (created automatically by Sign-in;
+   chmod 600 recommended):
 
    ```json
    {
@@ -50,6 +57,9 @@ Requirements: **Apple Silicon** Mac (the release DMG is aarch64-only).
    ```
 
    Only `notionToken` is required; the rest are optional.
+
+   Hive auto-updates from this repo's Releases (a toast offers
+   "Restart & update" when a new version ships).
 5. Launch Hive. To comment under your own name (instead of the integration
    bot), open the comments panel (💬) and click **"Comment as you — connect
    Notion"** — approve in the browser, then close that tab (its spinner
@@ -66,6 +76,21 @@ Requirements: **Apple Silicon** Mac (the release DMG is aarch64-only).
 3. `npm run tauri build` produces the .app and DMG. Note: the packaged
    binary is lowercase `hive` — kill with `pkill -x hive` before replacing
    /Applications/Hive.app or the stale process keeps running.
+
+## Release (maintainer)
+
+`./scripts/release.sh` builds, signs the updater artifact
+(`~/.tauri/hive-updater.key`), optionally codesigns + notarizes (fill
+`~/.hive/signing.env` from `scripts/signing.env.example`; needs a
+"Developer ID Application" cert in the keychain), writes `latest.json`,
+and publishes everything as a GitHub release — which existing installs
+pick up automatically.
+
+To enable **Sign in with Notion** for users: flip the integration to
+Public in notion.so/my-integrations (redirect URI
+`https://thetaylorpratt.github.io/hive-oauth/` — the bounce page source
+lives in `oauth-bounce/`), then paste the OAuth client id/secret into
+`src/lib/notionRestOauth.ts` and cut a release.
 
 ## Architecture in one breath
 

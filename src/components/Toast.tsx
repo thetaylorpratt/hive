@@ -19,7 +19,7 @@ export function Toast() {
             dismissToast();
           }}
         >
-          Undo
+          {toast.actionLabel ?? "Undo"}
         </button>
       )}
       <button className="close" onClick={dismissToast}>

@@ -1,0 +1,27 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Opening Hive…</title>
+  <meta name="robots" content="noindex">
+  <style>
+    body { font-family: -apple-system, sans-serif; display: flex; align-items: center;
+           justify-content: center; height: 100vh; margin: 0; background: #152238; color: #f7f4ec; }
+    .card { text-align: center; }
+    a { color: #29abe2; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>🐝 Opening Hive…</h2>
+    <p>If nothing happens, <a id="retry" href="#">click here</a>, then you can close this tab.</p>
+  </div>
+  <script>
+    // Notion OAuth requires an https redirect URI; this page just hands the
+    // authorization code to the Hive app's deep link. No data is stored.
+    var target = "hive://oauth/notion" + window.location.search;
+    document.getElementById("retry").href = target;
+    window.location.replace(target);
+  </script>
+</body>
+</html>

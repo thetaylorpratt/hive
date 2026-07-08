@@ -103,6 +103,32 @@ fn open_in_notion(page_id: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Write a REST token obtained via in-app OAuth into ~/.hive/config.json
+/// (creating it if absent) so tokenless installs can self-serve auth.
+#[tauri::command]
+fn save_notion_token(token: String) -> Result<(), String> {
+    if !token.starts_with("ntn_") && !token.starts_with("secret_") {
+        return Err("that doesn't look like a Notion token".into());
+    }
+    let home = std::env::var_os("HOME").ok_or("no HOME")?;
+    let dir = std::path::Path::new(&home).join(".hive");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let path = dir.join("config.json");
+    let mut json: serde_json::Value = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+    json["notionToken"] = serde_json::Value::String(token);
+    std::fs::write(&path, serde_json::to_string_pretty(&json).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+    }
+    Ok(())
+}
+
 /// OAuth tokens for Notion's hosted MCP (personal identity). Stored beside
 /// the API token in ~/.hive — chmod 600, never in the repo or logs.
 fn mcp_auth_path() -> Option<std::path::PathBuf> {
@@ -250,6 +276,8 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(
             tauri_plugin_sql::Builder::default()
                 .add_migrations("sqlite:hive.db", migrations)
@@ -262,7 +290,8 @@ pub fn run() {
             forward_url,
             open_in_notion,
             save_mcp_auth,
-            load_mcp_auth
+            load_mcp_auth,
+            save_notion_token
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -135,6 +135,36 @@ function ErrorEscapeHatches() {
   );
 }
 
+/** Tokenless onboarding: one-click OAuth when the public integration's
+ * credentials are baked into the build (see notionRestOauth.ts). */
+function SignInWithNotion() {
+  const [busy, setBusy] = useState(false);
+  const [configured, setConfigured] = useState(false);
+  useEffect(() => {
+    void import("./lib/notionRestOauth").then((m) =>
+      setConfigured(m.restOauthConfigured()),
+    );
+  }, []);
+  if (!configured) return null;
+  return (
+    <p>
+      <button
+        className="hive-btn hive-btn-primary"
+        disabled={busy}
+        onClick={() => {
+          setBusy(true);
+          void import("./lib/notionRestOauth").then((m) => m.beginRestAuth());
+        }}
+      >
+        {busy ? "Waiting for Notion…" : "Sign in with Notion"}
+      </button>
+      <span style={{ marginLeft: 10, color: "var(--hive-color-fg-muted)", fontSize: "0.85rem" }}>
+        pick the pages you want Hive to see — no token needed
+      </span>
+    </p>
+  );
+}
+
 function DemoButton() {
   const openDemo = useAppStore((s) => s.openDemo);
   return (
@@ -327,9 +357,10 @@ function Content() {
 
   if (auth.status === "missing-token") {
     return (
-      <Notice tone="warning" title="Notion token missing">
+      <Notice tone="warning" title="Connect Notion">
+        <SignInWithNotion />
         <p>
-          Create <code className="hive-inline-code">~/.hive/config.json</code>{" "}
+          Or create <code className="hive-inline-code">~/.hive/config.json</code>{" "}
           containing:
         </p>
         <div className="hive-code-block">
@@ -400,6 +431,11 @@ export default function App() {
       for (const raw of urls) {
         if (raw.startsWith("hive://oauth/callback")) {
           void s.completeMcpAuth(raw);
+          openedInHive = true;
+          continue;
+        }
+        if (raw.startsWith("hive://oauth/notion")) {
+          void s.completeRestAuth(raw);
           openedInHive = true;
           continue;
         }

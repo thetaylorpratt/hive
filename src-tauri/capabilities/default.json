@@ -22,6 +22,8 @@
         }
       ]
     },
-    "deep-link:default"
+    "deep-link:default",
+    "updater:default",
+    "process:allow-restart"
   ]
 }

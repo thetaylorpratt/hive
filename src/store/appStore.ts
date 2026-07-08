@@ -144,7 +144,7 @@ interface AppState {
   unreadBySpace: Record<string, number>;
   mru: { pageId: string; title: string; icon: string | null }[];
   focusMode: boolean;
-  toast: { message: string; undo?: () => Promise<void> } | null;
+  toast: { message: string; undo?: () => Promise<void>; actionLabel?: string; sticky?: boolean } | null;
   pageDiffs: Record<string, PageDiff>;
   shortcutSheetOpen: boolean;
   peek: { pageId: string; anchorY: number } | null;
@@ -218,7 +218,11 @@ interface AppState {
   outdentBlock: (blockId: string) => Promise<void>;
   setFocusBlock: (blockId: string | null) => void;
   toggleFocusMode: () => void;
-  showToast: (message: string, undo?: () => Promise<void>) => void;
+  showToast: (
+    message: string,
+    undo?: () => Promise<void>,
+    opts?: { actionLabel?: string; sticky?: boolean },
+  ) => void;
   dismissToast: () => void;
   refreshCurrentIfStale: () => Promise<void>;
   dismissDiff: (pageId: string) => void;
@@ -242,6 +246,7 @@ interface AppState {
   commentUsers: Record<string, string>;
   connectPersonalNotion: () => Promise<void>;
   completeMcpAuth: (url: string) => Promise<void>;
+  completeRestAuth: (url: string) => Promise<void>;
   toggleComments: () => void;
   loadComments: () => Promise<void>;
   focusThreadId: string | null;
@@ -328,6 +333,19 @@ export const useAppStore = create<AppState>((set, get) => ({
     void mcp.mcpConnected().then((connected) => {
       if (connected) set({ mcpStatus: "connected" });
     });
+
+    // Auto-update: check GitHub Releases once, a little after startup.
+    setTimeout(() => {
+      void import("../lib/updater").then((m) =>
+        m.checkForUpdate((version, install) => {
+          get().showToast(
+            `Hive ${version} is available`,
+            install,
+            { actionLabel: "Restart & update", sticky: true },
+          );
+        }),
+      );
+    }, 8000);
 
     // Content plane: Notion auth.
     let config;
@@ -806,12 +824,14 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   toggleFocusMode: () => set({ focusMode: !get().focusMode }),
 
-  showToast: (message, undo) => {
-    set({ toast: { message, undo } });
+  showToast: (message, undo, opts) => {
+    set({ toast: { message, undo, ...opts } });
     const shown = get().toast;
-    setTimeout(() => {
-      if (get().toast === shown) set({ toast: null });
-    }, 6000);
+    if (!opts?.sticky) {
+      setTimeout(() => {
+        if (get().toast === shown) set({ toast: null });
+      }, 6000);
+    }
   },
 
   dismissToast: () => set({ toast: null }),
@@ -1180,6 +1200,19 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ mcpStatus: "disconnected" });
       get().showToast(
         `Couldn't start Notion sign-in: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  },
+
+  completeRestAuth: async (url: string) => {
+    try {
+      const { completeRestAuth } = await import("../lib/notionRestOauth");
+      const workspace = await completeRestAuth(url);
+      get().showToast(`Connected to ${workspace} — restarting Hive…`);
+      setTimeout(() => window.location.reload(), 1200);
+    } catch (err) {
+      get().showToast(
+        `Notion sign-in failed: ${err instanceof Error ? err.message : err}`,
       );
     }
   },
