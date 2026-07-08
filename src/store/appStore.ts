@@ -133,6 +133,8 @@ interface AppState {
   peek: { pageId: string; anchorY: number } | null;
   breadcrumbs: Crumb[];
   split: { pageId: string; data: PageData | null } | null;
+  inbox: { id: string; pageId: string; kind: "comment" | "mention"; author: string; snippet: string; createdAt: string }[];
+  inboxOpen: boolean;
   searchView: {
     query: string;
     results: { pageId: string; title: string; icon: string | null; source: "notion" | "cached"; snippet?: string }[];
@@ -203,6 +205,9 @@ interface AppState {
   dismissDiff: (pageId: string) => void;
   setShortcutSheetOpen: (open: boolean) => void;
   openInSplit: (pageId: string) => Promise<void>;
+  refreshInbox: () => void;
+  dismissInboxItem: (id: string) => void;
+  setInboxOpen: (open: boolean) => void;
   closeSplit: () => void;
   openSearch: (query: string) => Promise<void>;
   loadMoreSearch: () => Promise<void>;
@@ -238,6 +243,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   peek: null,
   breadcrumbs: [],
   split: null,
+  inbox: [],
+  inboxOpen: false,
   searchView: null,
 
   init: async () => {
@@ -275,8 +282,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       initNotion(config.notion_token);
       const me = (await enqueue(() => notion().users.me({}))) as {
         name?: string;
+        bot?: { owner?: { user?: { id?: string } } };
       };
       set({ auth: { status: "ready", userName: me.name ?? "integration" } });
+      void import("../lib/inbox").then((m) =>
+        m.startInbox(me.bot?.owner?.user?.id ?? null, () => get().refreshInbox()),
+      );
       void startAttentionEngine(() => {
         void get().recomputeUnread();
         void get().refreshCurrentIfStale();
@@ -845,6 +856,17 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   closeSplit: () => set({ split: null }),
+
+  refreshInbox: () => {
+    void import("../lib/inbox").then((m) => set({ inbox: m.inboxItems() }));
+  },
+  dismissInboxItem: (id: string) => {
+    void import("../lib/inbox").then((m) => {
+      m.markRead(id);
+      set({ inbox: m.inboxItems() });
+    });
+  },
+  setInboxOpen: (open: boolean) => set({ inboxOpen: open }),
 
   openSearch: async (query: string) => {
     const q = query.trim();

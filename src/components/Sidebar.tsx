@@ -288,6 +288,16 @@ function useSwipeToSwitch() {
   };
 }
 
+function InboxBell() {
+  const count = useAppStore((s) => s.inbox.length);
+  const setInboxOpen = useAppStore((s) => s.setInboxOpen);
+  return (
+    <button className="hive-inbox-bell" onClick={() => setInboxOpen(true)} title="Comments & mentions inbox">
+      🔔 Inbox{count > 0 && <span className="hive-space-badge" style={{ position: "static", marginLeft: 6 }}>{count}</span>}
+    </button>
+  );
+}
+
 export function Sidebar() {
   const sidebarItems = useAppStore((s) => s.sidebarItems);
   const folders = useAppStore((s) => s.folders);
@@ -345,6 +355,7 @@ export function Sidebar() {
         className={`hive-space-pane ${direction}`}
       >
       <SpaceName />
+      <InboxBell />
 
       {favorites.length > 0 && (
         <div className="hive-fav-row">

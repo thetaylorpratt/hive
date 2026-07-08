@@ -1441,6 +1441,69 @@ tr:hover .hive-row-gutter {
   font-size: 0.85rem;
 }
 
+.hive-inbox-bell {
+  font: inherit;
+  font-size: 0.78rem;
+  display: flex;
+  align-items: center;
+  border: none;
+  background: none;
+  color: var(--hive-color-fg-secondary);
+  cursor: pointer;
+  padding: 2px 8px 8px;
+}
+.hive-inbox-bell:hover { color: var(--hive-color-accent); }
+
+.hive-inbox {
+  width: min(560px, 92vw);
+  max-height: 70vh;
+  overflow-y: auto;
+  background: var(--hive-color-bg-surface);
+  border: 1px solid var(--hive-color-border-subtle);
+  border-radius: var(--hive-radius-lg);
+  box-shadow: var(--hive-shadow-popover);
+  padding: 10px;
+}
+.hive-inbox .head {
+  font-weight: 600;
+  padding: 6px 8px 10px;
+}
+.hive-inbox .row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px;
+  border-radius: var(--hive-radius);
+}
+.hive-inbox .row:hover { background: var(--hive-color-bg-subtle); }
+.hive-inbox .row.mention .kind { color: var(--hive-color-critical-fg); font-weight: 700; }
+.hive-inbox .body {
+  font: inherit;
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.hive-inbox .author {
+  display: block;
+  font-weight: 600;
+  font-size: 0.78rem;
+}
+.hive-inbox .snippet {
+  display: block;
+  color: var(--hive-color-fg-secondary);
+  font-size: 0.82rem;
+}
+.hive-inbox .done {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--hive-color-fg-muted);
+}
+.hive-inbox .done:hover { color: var(--hive-color-success-fg); }
+
 /* ---- outline rail (right edge, hover to expand) ---- */
 
 .hive-outline {

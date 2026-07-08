@@ -9,6 +9,7 @@ import { Toast } from "./components/Toast";
 import { PropertiesHeader } from "./components/PropertiesHeader";
 import { PeekLayer } from "./components/PeekLayer";
 import { SplitPane } from "./components/SplitPane";
+import { InboxPanel } from "./components/InboxPanel";
 import { OutlineRail } from "./components/OutlineRail";
 import { ShortcutSheet } from "./components/ShortcutSheet";
 import { installKeymap } from "./lib/keymap";
@@ -400,6 +401,7 @@ export default function App() {
       <MruSwitcher />
       <Toast />
       <ShortcutSheet />
+      <InboxPanel />
       <PeekLayer />
     </div>
   );
