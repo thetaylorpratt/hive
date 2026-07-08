@@ -383,6 +383,29 @@ tr:hover .hive-row-gutter {
   margin-right: 0.35em;
 }
 
+.hive-toggle-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 0.3em;
+}
+.hive-toggle-heading .hive-editable-wrap,
+.hive-toggle-heading .hive-editable {
+  flex: 1;
+  min-width: 0;
+}
+.hive-toggle-caret {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 0.7em;
+  color: var(--hive-color-fg-muted);
+  padding: 0 2px;
+  flex-shrink: 0;
+}
+.hive-toggle-caret:hover {
+  color: var(--hive-color-accent);
+}
+
 /* ---- Tier 2 blocks ---- */
 
 .hive-image {

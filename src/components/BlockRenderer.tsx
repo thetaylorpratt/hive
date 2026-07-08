@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import katex from "katex";
 import { htmlToRichText, richTextToHtml } from "../lib/richTextHtml";
@@ -29,6 +29,47 @@ function Children({ block }: { block: HiveBlock }) {
     <div className="hive-children">
       <BlockList blocks={block.children} />
     </div>
+  );
+}
+
+/**
+ * Headings, including Notion toggle headings (is_toggleable): the caret
+ * expands/collapses children (collapsed by default, matching Notion);
+ * clicking the text edits it.
+ */
+function HeadingBlock({ block, level }: { block: HiveBlock; level: 1 | 2 | 3 }) {
+  const payload = block[block.type] as { is_toggleable?: boolean } | undefined;
+  const [open, setOpen] = useState(false);
+  const Tag = `h${level}` as "h1";
+  const toggleable = Boolean(payload?.is_toggleable);
+  return (
+    <>
+      <Tag
+        id={`hb-${block.id}`}
+        className={toggleable ? "hive-toggle-heading" : undefined}
+      >
+        {toggleable && (
+          <button
+            className="hive-toggle-caret"
+            aria-expanded={open}
+            title={open ? "Collapse" : "Expand"}
+            onClick={() => setOpen(!open)}
+          >
+            {open ? "\u25be" : "\u25b8"}
+          </button>
+        )}
+        <EditableText block={block} items={rich(block)} />
+      </Tag>
+      {toggleable && open && (
+        <div className="hive-children">
+          {block.children?.length ? (
+            <BlockList blocks={block.children} />
+          ) : (
+            <div className="hive-side-empty">Empty toggle</div>
+          )}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -66,21 +107,9 @@ const TIER1: Record<string, BlockComponent> = {
     </>
   ),
 
-  heading_1: ({ block }) => (
-    <h1 id={`hb-${block.id}`}>
-      <EditableText block={block} items={rich(block)} />
-    </h1>
-  ),
-  heading_2: ({ block }) => (
-    <h2 id={`hb-${block.id}`}>
-      <EditableText block={block} items={rich(block)} />
-    </h2>
-  ),
-  heading_3: ({ block }) => (
-    <h3 id={`hb-${block.id}`}>
-      <EditableText block={block} items={rich(block)} />
-    </h3>
-  ),
+  heading_1: ({ block }) => <HeadingBlock block={block} level={1} />,
+  heading_2: ({ block }) => <HeadingBlock block={block} level={2} />,
+  heading_3: ({ block }) => <HeadingBlock block={block} level={3} />,
 
   bulleted_list_item: ({ block }) => (
     <li>

@@ -10,7 +10,7 @@ import type { HiveBlock, RichTextItem } from "./types";
 export const DEMO_PAGE_ID = "00000000-0000-0000-0000-00000000demo";
 
 /** Bump when the fixture changes so cached (possibly edited) copies re-seed. */
-export const DEMO_VERSION = "5-properties";
+export const DEMO_VERSION = "6-toggle-heading";
 
 function text(
   content: string,
@@ -230,6 +230,15 @@ export const demoBlocks: HiveBlock[] = [
   }),
   block("child_database", { title: "Roadmap (linked database)" }),
   block("synced_block", {}),
+  block(
+    "heading_3",
+    { rich_text: [text("A toggle heading — click the caret")], is_toggleable: true },
+    [
+      block("paragraph", {
+        rich_text: [text("Hidden until expanded, exactly like Notion.")],
+      }),
+    ],
+  ),
   block("heading_3", { rich_text: [text("Sub-pages navigate in Hive")] }),
   // Real child_page blocks carry the sub-page's UUID as their block id and
   // open in Hive. The fixture points back at the demo page itself.
