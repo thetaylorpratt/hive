@@ -12,6 +12,7 @@ import { SplitPane } from "./components/SplitPane";
 import { InboxPanel } from "./components/InboxPanel";
 import { CaptureModal } from "./components/CaptureModal";
 import { HomeScreen } from "./components/HomeScreen";
+import { EmojiPicker } from "./components/EmojiPicker";
 import { OutlineRail } from "./components/OutlineRail";
 import { ShortcutSheet } from "./components/ShortcutSheet";
 import { installKeymap } from "./lib/keymap";
@@ -65,36 +66,33 @@ function Notice({
 function PageIcon({ emoji }: { emoji: string | null }) {
   const canEdit = useAppStore((s) => s.canEdit());
   const updatePageIcon = useAppStore((s) => s.updatePageIcon);
-  const [editing, setEditing] = useState(false);
+  const [picking, setPicking] = useState(false);
 
-  if (editing) {
-    return (
-      <input
-        className="hive-input hive-page-icon-input"
-        autoFocus
-        defaultValue={emoji ?? ""}
-        maxLength={4}
-        placeholder="🐝"
-        title="⌃⌘Space opens the emoji picker; empty removes the icon"
-        onBlur={(e) => {
-          void updatePageIcon(e.target.value.trim() || null);
-          setEditing(false);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") e.currentTarget.blur();
-          if (e.key === "Escape") setEditing(false);
-        }}
-      />
-    );
-  }
   if (!emoji && !canEdit) return null;
   return (
-    <span
-      className={`hive-page-icon${canEdit ? " editable" : ""}`}
-      title={canEdit ? "Click to change icon" : undefined}
-      onClick={() => canEdit && setEditing(true)}
-    >
-      {emoji ?? <span className="add-hint">☺︎</span>}
+    <span style={{ position: "relative" }}>
+      <span
+        className={`hive-page-icon${canEdit ? " editable" : ""}`}
+        title={canEdit ? "Click to change icon" : undefined}
+        onClick={() => canEdit && setPicking(!picking)}
+      >
+        {emoji ?? <span className="add-hint">☺︎</span>}
+      </span>
+      {picking && (
+        <span className="hive-page-icon-popover">
+          <EmojiPicker
+            onPick={(char) => {
+              setPicking(false);
+              void updatePageIcon(char);
+            }}
+            onRemove={() => {
+              setPicking(false);
+              void updatePageIcon(null);
+            }}
+            onClose={() => setPicking(false)}
+          />
+        </span>
+      )}
     </span>
   );
 }
@@ -195,6 +193,7 @@ function Content() {
   const pageId = useAppStore((s) => s.pageId);
   const pageDiffs = useAppStore((s) => s.pageDiffs);
   const dismissDiff = useAppStore((s) => s.dismissDiff);
+  const displayPrefs = useAppStore((s) => s.displayPrefs);
 
   if (searchView) return <SearchResults />;
 
@@ -210,7 +209,9 @@ function Content() {
     return (
       <article
         key={pageId}
-        className={`hive-doc hive-page-in${focusMode ? " focus-mode" : ""}`}
+        className={`hive-doc hive-page-in${focusMode ? " focus-mode" : ""}${
+          displayPrefs.smallText ? " small-text" : ""
+        }${displayPrefs.fullWidth ? " full-width" : ""}`}
       >
         {diff && (
           <div className="hive-diff-banner">
@@ -235,7 +236,26 @@ function Content() {
         )}
         <h1 className="hive-page-title">
           <PageIcon emoji={emoji} />
-          {pageTitle(page.page)}
+          <span
+            className={canEdit ? "hive-title-edit" : undefined}
+            contentEditable={canEdit}
+            suppressContentEditableWarning
+            spellCheck={false}
+            onBlur={(e) => {
+              const t = e.currentTarget.textContent ?? "";
+              if (canEdit && t.trim() && t.trim() !== pageTitle(page.page)) {
+                void useAppStore.getState().updatePageTitle(t);
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                (e.target as HTMLElement).blur();
+              }
+            }}
+          >
+            {pageTitle(page.page)}
+          </span>
         </h1>
         <PropertiesHeader page={page.page} />
         <SubPages />
@@ -373,6 +393,8 @@ export default function App() {
       else if (action === "shortcut-sheet")
         s.setShortcutSheetOpen(!s.shortcutSheetOpen);
       else if (action === "quick-capture") s.setCaptureOpen(!s.captureOpen);
+      else if (action === "nav-back") void s.goBack();
+      else if (action === "nav-forward") void s.goForward();
       else if (action.startsWith("switch-space-")) {
         void s.switchSpaceByIndex(Number(action.slice("switch-space-".length)));
       }

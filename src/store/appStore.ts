@@ -35,6 +35,21 @@ let peekCloseTimer: ReturnType<typeof setTimeout>;
 let navSeq = 0;
 let initStarted = false;
 let lastStaleCheck = 0;
+function loadDisplayPrefs(pageId: string) {
+  try {
+    return {
+      smallText: false,
+      fullWidth: false,
+      ...JSON.parse(localStorage.getItem(`hive-prefs-${pageId}`) ?? "{}"),
+    };
+  } catch {
+    return { smallText: false, fullWidth: false };
+  }
+}
+
+let history: string[] = [];
+let historyIndex = -1;
+let suppressHistory = false;
 
 /**
  * All block mutations run through this chain, one at a time, reading state
@@ -136,6 +151,7 @@ interface AppState {
   inbox: { id: string; pageId: string; kind: "comment" | "mention"; author: string; snippet: string; createdAt: string }[];
   inboxOpen: boolean;
   captureOpen: boolean;
+  displayPrefs: { smallText: boolean; fullWidth: boolean };
   searchView: {
     query: string;
     results: { pageId: string; title: string; icon: string | null; source: "notion" | "cached"; snippet?: string }[];
@@ -205,12 +221,20 @@ interface AppState {
   refreshCurrentIfStale: () => Promise<void>;
   dismissDiff: (pageId: string) => void;
   setShortcutSheetOpen: (open: boolean) => void;
+  canGoBack: () => boolean;
+  canGoForward: () => boolean;
+  goBack: () => Promise<void>;
+  goForward: () => Promise<void>;
   openInSplit: (pageId: string) => Promise<void>;
   refreshInbox: () => void;
   dismissInboxItem: (id: string) => void;
   setInboxOpen: (open: boolean) => void;
   setCaptureOpen: (open: boolean) => void;
   createComment: (text: string, quote: string) => Promise<void>;
+  setDisplayPref: (key: "smallText" | "fullWidth", value: boolean) => void;
+  movePageToSpace: (pageId: string, spaceId: string) => Promise<void>;
+  createPage: (parentId: string | null) => Promise<void>;
+  updatePageTitle: (title: string) => Promise<void>;
   createCapture: (text: string) => Promise<void>;
   closeSplit: () => void;
   openSearch: (query: string) => Promise<void>;
@@ -250,6 +274,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   inbox: [],
   inboxOpen: false,
   captureOpen: false,
+  displayPrefs: { smallText: false, fullWidth: false },
   searchView: null,
 
   init: async () => {
@@ -287,9 +312,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       initNotion(config.notion_token);
       const me = (await enqueue(() => notion().users.me({}))) as {
         name?: string;
-        bot?: { owner?: { user?: { id?: string } } };
+        bot?: { owner?: { user?: { id?: string; name?: string } } };
       };
-      set({ auth: { status: "ready", userName: me.name ?? "integration" } });
+      // Prefer the human who owns the integration over the bot's name
+      const userName = me.bot?.owner?.user?.name ?? me.name ?? "integration";
+      set({ auth: { status: "ready", userName } });
       void import("../lib/inbox").then((m) =>
         m.startInbox(me.bot?.owner?.user?.id ?? null, () => get().refreshInbox()),
       );
@@ -325,6 +352,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       /* no SQLite (plain-browser dev) — proceed as a cache miss */
     }
     if (navSeq !== nav) return; // a newer navigation superseded this one
+    if (!suppressHistory && history[historyIndex] !== pageId) {
+      history = [...history.slice(0, historyIndex + 1), pageId];
+      historyIndex = history.length - 1;
+    }
+    suppressHistory = false;
     set({
       pageId,
       page: cached,
@@ -334,6 +366,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       writeError: null,
       searchView: null,
       breadcrumbs: [],
+      displayPrefs: loadDisplayPrefs(pageId),
     });
     get().closePeek();
     if (cached) await get().recordOpen(pageId, cached);
@@ -405,6 +438,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   openDemo: async () => {
     const nav = ++navSeq;
+    if (!suppressHistory && history[historyIndex] !== DEMO_PAGE_ID) {
+      history = [...history.slice(0, historyIndex + 1), DEMO_PAGE_ID];
+      historyIndex = history.length - 1;
+    }
+    suppressHistory = false;
     // Exercises the real pipe minus Notion, cache-first — including your own
     // edits, which persist in page_cache. Re-seed only on fixture upgrades.
     let data: PageData;
@@ -848,6 +886,21 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setShortcutSheetOpen: (open: boolean) => set({ shortcutSheetOpen: open }),
 
+  canGoBack: () => historyIndex > 0,
+  canGoForward: () => historyIndex < history.length - 1,
+  goBack: async () => {
+    if (historyIndex <= 0) return;
+    historyIndex -= 1;
+    suppressHistory = true;
+    await get().openPage(history[historyIndex]);
+  },
+  goForward: async () => {
+    if (historyIndex >= history.length - 1) return;
+    historyIndex += 1;
+    suppressHistory = true;
+    await get().openPage(history[historyIndex]);
+  },
+
   openInSplit: async (pageId: string) => {
     let cached: PageData | null = null;
     try {
@@ -888,6 +941,89 @@ export const useAppStore = create<AppState>((set, get) => ({
   setInboxOpen: (open: boolean) => set({ inboxOpen: open }),
   setCaptureOpen: (open: boolean) => set({ captureOpen: open }),
 
+  setDisplayPref: (key, value) => {
+    const { pageId, displayPrefs } = get();
+    const next = { ...displayPrefs, [key]: value };
+    set({ displayPrefs: next });
+    if (pageId) localStorage.setItem(`hive-prefs-${pageId}`, JSON.stringify(next));
+  },
+
+  movePageToSpace: async (pageId: string, spaceId: string) => {
+    const existing = get().sidebarItems.find((i) => i.notionPageId === pageId);
+    if (existing) {
+      await org.updateItem(existing.id, { spaceId });
+    } else {
+      const page = get().page;
+      const title = page && get().pageId === pageId ? pageTitle(page.page) : "Untitled";
+      await org.touchToday(spaceId, pageId, title, page ? pageEmoji(page.page) : null);
+    }
+    await get().refreshSidebar();
+    const space = get().spaces.find((sp) => sp.id === spaceId);
+    if (space) get().showToast(`Moved to ${space.name}`);
+  },
+
+  createPage: async (parentId: string | null) => {
+    if (get().auth.status !== "ready") {
+      get().showToast("Creating pages needs the Notion token");
+      return;
+    }
+    try {
+      let parent = parentId;
+      if (!parent || parent === DEMO_PAGE_ID) {
+        parent = (await loadConfig()).capture_page_id ?? null;
+      }
+      if (!parent) {
+        get().showToast("No parent page — set capturePageId or open a page first");
+        return;
+      }
+      const created = (await enqueue(() =>
+        notion().pages.create({
+          parent: { page_id: parent },
+          properties: { title: { title: [{ text: { content: "Untitled" } }] } },
+        }),
+      )) as { id: string };
+      await get().openPage(created.id);
+      get().showToast("Page created — click the title to name it");
+    } catch (err) {
+      get().showToast(`Create failed: ${err instanceof Error ? err.message : err}`);
+    }
+  },
+
+  updatePageTitle: async (title: string) => {
+    const { pageId, page, auth } = get();
+    if (!pageId || !page || !title.trim()) return;
+    const clean = title.trim();
+    // optimistic: rewrite the title property locally
+    const props = { ...(page.page.properties as Record<string, unknown>) };
+    for (const [key, val] of Object.entries(props)) {
+      const v = val as { type?: string };
+      if (v?.type === "title") {
+        props[key] = {
+          ...v,
+          title: [{ type: "text", plain_text: clean, href: null,
+            annotations: { bold: false, italic: false, strikethrough: false, underline: false, code: false, color: "default" },
+            text: { content: clean, link: null } }],
+        };
+      }
+    }
+    const nextPage = { ...page.page, properties: props };
+    set({ page: { ...page, page: nextPage } });
+    try {
+      await upsertPageCache(pageId, nextPage, page.blocks);
+    } catch { /* no SQLite */ }
+    if (auth.status === "ready" && pageId !== DEMO_PAGE_ID) {
+      enqueue(() =>
+        notion().pages.update({
+          page_id: pageId,
+          properties: { title: { title: [{ text: { content: clean } }] } },
+        } as never),
+      ).catch((err) =>
+        set({ writeError: `Title save failed: ${err instanceof Error ? err.message : err}` }),
+      );
+    }
+    await get().recordOpen(pageId, { ...page, page: nextPage });
+  },
+
   /**
    * Comment on the open page. The API cannot anchor new inline threads
    * (page-level comments or thread replies only), so the selection is
@@ -900,7 +1036,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
     try {
+      // The API always posts comments AS the integration bot — prefix the
+      // human's name so teammates know who is speaking.
+      const who = get().auth.userName;
       const rich: unknown[] = [];
+      if (who) {
+        rich.push({ text: { content: `${who}: ` }, annotations: { bold: true } });
+      }
       if (quote.trim()) {
         rich.push({
           text: { content: `“${quote.trim().slice(0, 120)}” — ` },

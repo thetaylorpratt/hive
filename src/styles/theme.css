@@ -1737,6 +1737,170 @@ tr:hover .hive-row-gutter {
   color: var(--hive-color-accent);
 }
 
+.hive-emoji-picker {
+  margin-top: 8px;
+}
+.hive-emoji-picker .row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.hive-emoji-picker .row .hive-input {
+  flex: 1;
+  font-size: 0.8rem;
+}
+.hive-emoji-picker .grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.hive-emoji-picker .grid button {
+  font-size: 1.1rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: var(--hive-radius-sm);
+}
+.hive-emoji-picker .grid button:hover {
+  background: var(--hive-color-bg-subtle);
+}
+.hive-emoji-picker .none {
+  grid-column: 1 / -1;
+  color: var(--hive-color-fg-muted);
+  font-size: 0.8rem;
+  padding: 8px;
+}
+.hive-page-icon-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 600;
+  display: block;
+  width: 320px;
+  background: var(--hive-color-bg-surface);
+  border: 1px solid var(--hive-color-border);
+  border-radius: var(--hive-radius);
+  box-shadow: var(--hive-shadow-sm);
+  padding: 10px;
+  font-size: 0.875rem;
+  font-weight: 400;
+  animation: hive-menu-in 150ms ease-out;
+}
+.hive-space-editor .icon-input {
+  width: 44px;
+  text-align: center;
+  cursor: pointer;
+  font-size: 1.1rem;
+}
+
+.hive-nav-btn {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--hive-color-fg-secondary);
+  padding: 4px 6px;
+  border-radius: var(--hive-radius-sm);
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.hive-nav-btn:hover:not(:disabled) {
+  background: var(--hive-color-bg-subtle);
+  color: var(--hive-color-fg);
+}
+.hive-nav-btn:disabled {
+  color: var(--hive-color-border);
+  cursor: default;
+}
+
+.hive-page-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 700;
+  min-width: 240px;
+  background: var(--hive-color-bg-surface);
+  border: 1px solid var(--hive-color-border);
+  border-radius: var(--hive-radius);
+  box-shadow: var(--hive-shadow-sm);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  animation: hive-menu-in 150ms ease-out;
+}
+.hive-page-menu .row {
+  font: inherit;
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: none;
+  background: none;
+  color: var(--hive-color-fg-secondary);
+  cursor: pointer;
+  text-align: left;
+  padding: 4px 8px;
+  border-radius: var(--hive-radius);
+  transition: background-color 0.15s ease-in-out;
+  white-space: nowrap;
+}
+.hive-page-menu .row:hover {
+  background: var(--hive-color-bg-subtle);
+  color: var(--hive-color-fg);
+}
+.hive-page-menu .sep {
+  height: 1px;
+  background: var(--hive-color-border);
+  margin: 4px 0;
+}
+.hive-page-menu .tgl {
+  width: 26px;
+  height: 15px;
+  border-radius: 8px;
+  background: var(--hive-color-border);
+  position: relative;
+  flex-shrink: 0;
+}
+.hive-page-menu .tgl::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s ease;
+}
+.hive-page-menu .tgl.on {
+  background: var(--hive-color-accent);
+}
+.hive-page-menu .tgl.on::after {
+  transform: translateX(11px);
+}
+
+.hive-title-edit {
+  outline: none;
+  border-radius: var(--hive-radius-sm);
+}
+.hive-title-edit:focus {
+  background: var(--hive-color-bg-subtle);
+}
+
+.hive-doc.small-text {
+  font-size: 0.8125rem;
+}
+.hive-doc.full-width {
+  max-width: none;
+  padding-left: 3rem;
+  padding-right: 3rem;
+}
+
 /* ---- outline rail (right edge, hover to expand) ---- */
 
 .hive-outline {

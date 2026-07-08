@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useAppStore } from "../store/appStore";
+import { EmojiPicker } from "./EmojiPicker";
 import { SPACE_ACCENTS } from "../lib/orgDb";
 import type { Space } from "../lib/orgDb";
 
@@ -33,18 +34,17 @@ function SpaceEditor({ space, onClose }: { space: Space; onClose: () => void }) 
     return () => window.removeEventListener("mousedown", away);
   }, [onClose]);
 
+  const [pickerOpen, setPickerOpen] = useState(false);
   return (
     <div className="hive-space-editor" ref={ref}>
       <div className="row">
-        <input
+        <button
           className="hive-input icon-input"
-          value={icon}
-          placeholder="🐝"
-          maxLength={4}
-          onChange={(e) => setIcon(e.target.value)}
-          onBlur={commit}
-          title="Space icon — ⌃⌘Space for the emoji picker"
-        />
+          title="Space icon"
+          onClick={() => setPickerOpen(!pickerOpen)}
+        >
+          {icon || "🐝"}
+        </button>
         <input
           className="hive-input flex-1"
           value={name}
@@ -60,6 +60,21 @@ function SpaceEditor({ space, onClose }: { space: Space; onClose: () => void }) 
           }}
         />
       </div>
+      {pickerOpen && (
+        <EmojiPicker
+          onPick={(char) => {
+            setIcon(char);
+            setPickerOpen(false);
+            void updateSpace(space.id, { name, icon: char });
+          }}
+          onRemove={() => {
+            setIcon("");
+            setPickerOpen(false);
+            void updateSpace(space.id, { name, icon: null });
+          }}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
       <div className="row swatches">
         {SPACE_ACCENTS.map((accent) => (
           <button

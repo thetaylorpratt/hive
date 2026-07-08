@@ -1,4 +1,12 @@
-import { MagnifyingGlass, Sidebar as SidebarIcon } from "@phosphor-icons/react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  DotsThree,
+  MagnifyingGlass,
+  Sidebar as SidebarIcon,
+} from "@phosphor-icons/react";
+import { useState } from "react";
+import { PageMenu } from "./PageMenu";
 import { useAppStore } from "../store/appStore";
 import { pageTitle } from "../lib/pageMeta";
 
@@ -79,6 +87,14 @@ export function Header() {
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
   const sidebarVisible = useAppStore((s) => s.sidebarVisible);
   const setCommandBarOpen = useAppStore((s) => s.setCommandBarOpen);
+  const goBack = useAppStore((s) => s.goBack);
+  const goForward = useAppStore((s) => s.goForward);
+  const pageId = useAppStore((s) => s.pageId);
+  // re-render on nav so the disabled states track history position
+  useAppStore((s) => s.page);
+  const canBack = useAppStore((s) => s.canGoBack)();
+  const canFwd = useAppStore((s) => s.canGoForward)();
+  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
     <header className="hive-header">
@@ -88,6 +104,22 @@ export function Header() {
         onClick={toggleSidebar}
       >
         <SidebarIcon size={17} weight="bold" />
+      </button>
+      <button
+        className="hive-nav-btn"
+        disabled={!canBack}
+        title="Back (⌘[)"
+        onClick={() => void goBack()}
+      >
+        <ArrowLeft size={16} weight="bold" />
+      </button>
+      <button
+        className="hive-nav-btn"
+        disabled={!canFwd}
+        title="Forward (⌘])"
+        onClick={() => void goForward()}
+      >
+        <ArrowRight size={16} weight="bold" />
       </button>
       <span className="hive-logo">🐝</span>
       <Breadcrumbs />
@@ -99,6 +131,18 @@ export function Header() {
       >
         <MagnifyingGlass size={14} weight="bold" /> Search <kbd>⌘T</kbd>
       </button>
+      {pageId && (
+        <span style={{ position: "relative" }}>
+          <button
+            className="hive-nav-btn"
+            title="Page options"
+            onClick={() => setMenuOpen(!menuOpen)}
+          >
+            <DotsThree size={20} weight="bold" />
+          </button>
+          {menuOpen && <PageMenu onClose={() => setMenuOpen(false)} />}
+        </span>
+      )}
       <AuthChip />
     </header>
   );

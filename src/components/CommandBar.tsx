@@ -96,6 +96,9 @@ function useActions(): Result[] {
 
   const actions: Result[] = [
     action("Quick capture", "📝", () => store.getState().setCaptureOpen(true), "⌘⌥N"),
+    action("New page", "➕", () => void store.getState().createPage(
+      store.getState().pageId ?? null,
+    )),
     action("New Space", "✨", () => void store.getState().createSpace()),
     action("New folder", "📁", () => void store.getState().createFolder()),
     action("Toggle sidebar", "◧", () => store.getState().toggleSidebar(), "⌘\\"),

@@ -19,6 +19,8 @@ export const DEFAULT_BINDINGS: KeyBinding[] = [
   { combo: "meta+shift+f", action: "focus-mode" },
   { combo: "?", action: "shortcut-sheet" },
   { combo: "meta+alt+n", action: "quick-capture" },
+  { combo: "meta+[", action: "nav-back" },
+  { combo: "meta+]", action: "nav-forward" },
   ...Array.from({ length: 9 }, (_, i) => ({
     combo: `ctrl+${i + 1}`,
     action: `switch-space-${i + 1}`,
