@@ -28,6 +28,7 @@ const readIds = new Set<string>(
 );
 const items = new Map<string, InboxItem>();
 let meId: string | null = null;
+let botId: string | null = null;
 let timer: ReturnType<typeof setInterval> | null = null;
 let offset = 0;
 
@@ -40,6 +41,23 @@ export function inboxItems(): InboxItem[] {
 export function markRead(id: string) {
   readIds.add(id);
   localStorage.setItem(READ_KEY, JSON.stringify([...readIds].slice(-2000)));
+}
+
+const userNames = new Map<string, string>();
+async function resolveUserName(userId: string): Promise<string> {
+  const cached = userNames.get(userId);
+  if (cached) return cached;
+  try {
+    const u = (await enqueue(() =>
+      notion().users.retrieve({ user_id: userId }),
+    )) as { name?: string };
+    const name = u.name ?? "someone";
+    userNames.set(userId, name);
+    return name;
+  } catch {
+    userNames.set(userId, "someone"); // guests/removed users 404 — don't retry
+    return "someone";
+  }
 }
 
 async function pollOnce(onChange: () => void, force = false) {
@@ -69,8 +87,11 @@ async function pollOnce(onChange: () => void, force = false) {
         const mentioned = meId
           ? rich.some((t) => t.type === "mention" && t.mention?.user?.id === meId)
           : false;
-        const author =
-          ((c.created_by as { name?: string; id?: string }) ?? {}).name ?? "someone";
+        // comments.list returns a PARTIAL created_by (id only, no name) —
+        // resolve through the users API, cached per author
+        const by = (c.created_by as { name?: string; id?: string }) ?? {};
+        if (by.id && by.id === botId) continue; // Hive's own posts — no self-notify
+        const author = by.name ?? (by.id ? await resolveUserName(by.id) : "someone");
         items.set(id, {
           id, pageId,
           kind: mentioned ? "mention" : "comment",
@@ -88,8 +109,13 @@ async function pollOnce(onChange: () => void, force = false) {
   if (changed) onChange();
 }
 
-export function startInbox(userId: string | null, onChange: () => void) {
+export function startInbox(
+  userId: string | null,
+  integrationBotId: string | null,
+  onChange: () => void,
+) {
   meId = userId;
+  botId = integrationBotId;
   if (timer) return;
   if ("Notification" in window && Notification.permission === "default") {
     void Notification.requestPermission();

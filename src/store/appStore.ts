@@ -345,6 +345,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       initNotion(config.notion_token);
       const me = (await enqueue(() => notion().users.me({}))) as {
+        id?: string;
         name?: string;
         bot?: { owner?: { user?: { id?: string; name?: string } } };
       };
@@ -352,7 +353,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       const userName = me.bot?.owner?.user?.name ?? me.name ?? "integration";
       set({ auth: { status: "ready", userName } });
       void import("../lib/inbox").then((m) =>
-        m.startInbox(me.bot?.owner?.user?.id ?? null, () => get().refreshInbox()),
+        m.startInbox(
+          me.bot?.owner?.user?.id ?? null,
+          me.id ?? null,
+          () => get().refreshInbox(),
+        ),
       );
       void startAttentionEngine(() => {
         void get().recomputeUnread();
