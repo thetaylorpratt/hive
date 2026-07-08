@@ -86,7 +86,6 @@ export function CommentsPanel() {
   const threads = useAppStore((s) => s.commentThreads);
   const loading = useAppStore((s) => s.commentsLoading);
   const mcpStatus = useAppStore((s) => s.mcpStatus);
-  const userName = useAppStore((s) => s.auth.userName);
   const loadComments = useAppStore((s) => s.loadComments);
   const createComment = useAppStore((s) => s.createComment);
   const connectPersonalNotion = useAppStore((s) => s.connectPersonalNotion);
@@ -138,7 +137,9 @@ export function CommentsPanel() {
 
       <div className="identity">
         {mcpStatus === "connected" ? (
-          <span className="as-you">Commenting as {userName ?? "you"}</span>
+          // auth.userName is the bot's name (workspace-owned integration) —
+          // the MCP token is the user's own identity, so say "you"
+          <span className="as-you">Commenting as you (personal Notion connection)</span>
         ) : (
           <>
             <span className="as-bot">
