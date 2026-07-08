@@ -1275,6 +1275,123 @@ tr:hover .hive-row-gutter {
   font-size: 0.8rem;
 }
 
+.hive-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: var(--hive-color-bg-surface);
+  border-bottom: 1px solid var(--hive-color-border-subtle);
+  min-height: 44px;
+}
+.hive-logo {
+  flex-shrink: 0;
+}
+.hive-auth-chip {
+  border-radius: var(--hive-radius);
+  padding: 3px 10px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.hive-search-pill {
+  font: inherit;
+  font-size: 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--hive-color-border);
+  background: var(--hive-color-bg-subtle);
+  color: var(--hive-color-fg-secondary);
+  border-radius: 999px;
+  padding: 4px 12px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.hive-search-pill:hover {
+  border-color: var(--hive-color-accent);
+  color: var(--hive-color-fg);
+}
+.hive-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.82rem;
+}
+.hive-crumbs .crumb-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 1;
+  min-width: 0;
+}
+.hive-crumbs .crumb {
+  font: inherit;
+  border: none;
+  background: none;
+  color: var(--hive-color-fg-muted);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: var(--hive-radius-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+.hive-crumbs .crumb:hover:not(:disabled) {
+  color: var(--hive-color-accent);
+  background: var(--hive-color-bg-subtle);
+}
+.hive-crumbs .crumb:disabled {
+  cursor: default;
+}
+.hive-crumbs .ci {
+  margin-right: 0.25em;
+}
+.hive-crumbs .sep {
+  color: var(--hive-color-border);
+}
+.hive-crumbs .current {
+  color: var(--hive-color-fg);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hive-subpages {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 14px;
+}
+.hive-subpages .label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--hive-color-fg-muted);
+  margin-right: 4px;
+}
+.hive-subpages button {
+  font: inherit;
+  font-size: 0.8rem;
+  border: 1px solid var(--hive-color-border-subtle);
+  background: var(--hive-color-bg-surface);
+  color: var(--hive-color-fg-secondary);
+  border-radius: 999px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+.hive-subpages button:hover {
+  border-color: var(--hive-color-accent);
+  color: var(--hive-color-fg);
+}
+
 /* ---- outline rail (right edge, hover to expand) ---- */
 
 .hive-outline {

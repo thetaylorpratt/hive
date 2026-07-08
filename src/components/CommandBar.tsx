@@ -4,6 +4,7 @@ import { notion } from "../lib/notionClient";
 import { enqueue } from "../lib/queue";
 import { pageEmoji, pageTitle } from "../lib/pageMeta";
 import { topRecents } from "../lib/frecencyDb";
+import { normalizePageId } from "../lib/fetchPage";
 import { searchCachedPages } from "../lib/db";
 import type { SearchHit } from "../lib/db";
 import type { FrecencyEntry } from "../lib/frecencyDb";
@@ -118,6 +119,12 @@ function useActions(): Result[] {
   }
   if (realPage) {
     actions.push(
+      action("View in embedded Notion window", "🪟", () => {
+        const id = store.getState().pageId!.replace(/-/g, "");
+        void import("@tauri-apps/api/core").then((m) =>
+          m.invoke("open_embed", { url: `https://www.notion.so/${id}` }),
+        );
+      }),
       action("Open current doc in Notion", "↗", () => {
         const id = store.getState().pageId!;
         void import("@tauri-apps/api/core")
@@ -217,6 +224,22 @@ export function CommandBar() {
   const results = useMemo<Result[]>(() => {
     const scored: { result: Result; score: number }[] = [];
     const q = query.trim().toLowerCase();
+
+    // Pasted Notion URL or page id → direct open (replaces the old header input)
+    const pastedId = q.length >= 10 ? normalizePageId(query) : null;
+    if (pastedId) {
+      scored.push({
+        score: 50_000,
+        result: {
+          key: "open-link",
+          pageId: pastedId,
+          title: "Open page from link",
+          icon: "🔗",
+          source: "action",
+          hint: "pasted link",
+        },
+      });
+    }
 
     // Aliases first: strict prefix, deterministic, huge score.
     if (q) {

@@ -151,6 +151,34 @@ function SearchResults() {
   );
 }
 
+/** Sub-page navigation: child_page blocks anywhere in the open page. */
+function SubPages() {
+  const page = useAppStore((s) => s.page);
+  const openPage = useAppStore((s) => s.openPage);
+  if (!page) return null;
+  const subs: { id: string; title: string }[] = [];
+  const walk = (blocks: typeof page.blocks) => {
+    for (const b of blocks) {
+      if (b.type === "child_page") {
+        subs.push({ id: b.id, title: (b.child_page as { title?: string })?.title || "Untitled" });
+      }
+      if (b.children) walk(b.children);
+    }
+  };
+  walk(page.blocks);
+  if (subs.length === 0) return null;
+  return (
+    <div className="hive-subpages">
+      <span className="label">Sub-pages</span>
+      {subs.map((sp) => (
+        <button key={sp.id} onClick={() => void openPage(sp.id)}>
+          📄 {sp.title}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function Content() {
   const searchView = useAppStore((s) => s.searchView);
   const auth = useAppStore((s) => s.auth);
@@ -206,6 +234,7 @@ function Content() {
           {pageTitle(page.page)}
         </h1>
         <PropertiesHeader page={page.page} />
+        <SubPages />
         <div
           className="mb-4"
           style={{ fontSize: "0.75rem", color: "var(--hive-color-fg-muted)" }}

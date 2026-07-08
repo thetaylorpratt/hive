@@ -1,5 +1,12 @@
-import { useState } from "react";
 import { useAppStore } from "../store/appStore";
+import { pageTitle } from "../lib/pageMeta";
+
+/**
+ * Header v2 (post-ADR-001): breadcrumb navigation instead of the Phase-1
+ * paste-a-URL input and render-vs-embed toggle. URL pasting lives in ⌘T
+ * (paste a link there and an "Open page from link" row appears); the
+ * embedded window survives as a palette action.
+ */
 
 function AuthChip() {
   const auth = useAppStore((s) => s.auth);
@@ -27,41 +34,53 @@ function AuthChip() {
   };
   const s = styles[auth.status];
   return (
-    <span
-      title={auth.message}
-      style={{
-        background: s.bg,
-        color: s.fg,
-        borderRadius: "var(--hive-radius)",
-        padding: "3px 10px",
-        fontSize: "0.75rem",
-        fontWeight: 500,
-        whiteSpace: "nowrap",
-      }}
-    >
+    <span className="hive-auth-chip" title={auth.message} style={{ background: s.bg, color: s.fg }}>
       {s.label}
     </span>
   );
 }
 
-export function Header() {
-  const [input, setInput] = useState("");
+function Breadcrumbs() {
+  const breadcrumbs = useAppStore((s) => s.breadcrumbs);
+  const page = useAppStore((s) => s.page);
+  const searchView = useAppStore((s) => s.searchView);
   const openPage = useAppStore((s) => s.openPage);
-  const view = useAppStore((s) => s.view);
-  const setView = useAppStore((s) => s.setView);
-  const authReady = useAppStore((s) => s.auth.status === "ready");
 
-  const toggleSidebar = useAppStore((s) => s.toggleSidebar);
-  const sidebarVisible = useAppStore((s) => s.sidebarVisible);
+  if (searchView) {
+    return <nav className="hive-crumbs"><span className="current">Search</span></nav>;
+  }
+  if (!page) return <nav className="hive-crumbs" />;
 
   return (
-    <header
-      className="flex items-center gap-3 px-4 py-2.5"
-      style={{
-        background: "var(--hive-color-bg-surface)",
-        borderBottom: "1px solid var(--hive-color-border-subtle)",
-      }}
-    >
+    <nav className="hive-crumbs">
+      {breadcrumbs.map((c) => (
+        <span key={c.pageId} className="crumb-seg">
+          <button
+            className="crumb"
+            disabled={c.isDatabase}
+            title={c.isDatabase ? `${c.title} (database — open in Notion)` : c.title}
+            onClick={() => !c.isDatabase && void openPage(c.pageId)}
+          >
+            {c.icon && <span className="ci">{c.icon}</span>}
+            {c.title}
+          </button>
+          <span className="sep">/</span>
+        </span>
+      ))}
+      <span className="current" title={pageTitle(page.page)}>
+        {pageTitle(page.page)}
+      </span>
+    </nav>
+  );
+}
+
+export function Header() {
+  const toggleSidebar = useAppStore((s) => s.toggleSidebar);
+  const sidebarVisible = useAppStore((s) => s.sidebarVisible);
+  const setCommandBarOpen = useAppStore((s) => s.setCommandBarOpen);
+
+  return (
+    <header className="hive-header">
       <button
         className="hive-sidebar-toggle"
         title={`${sidebarVisible ? "Hide" : "Show"} sidebar (⌘\\)`}
@@ -69,44 +88,16 @@ export function Header() {
       >
         ◧
       </button>
-      <span className="font-semibold" style={{ letterSpacing: "-0.01em" }}>
-        🐝 Hive
-      </span>
-      <form
-        className="flex flex-1 gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (input.trim()) void openPage(input);
-        }}
+      <span className="hive-logo">🐝</span>
+      <Breadcrumbs />
+      <div style={{ flex: 1 }} />
+      <button
+        className="hive-search-pill"
+        onClick={() => setCommandBarOpen(true)}
+        title="Search docs, Notion, and actions"
       >
-        <input
-          className="hive-input flex-1"
-          placeholder="Paste a Notion page ID or URL…"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          disabled={!authReady}
-          spellCheck={false}
-        />
-        <button className="hive-btn" type="submit" disabled={!authReady || !input.trim()}>
-          Open
-        </button>
-      </form>
-      <div className="hive-segment" title="Render-vs-embed spike (Phase 1)">
-        <button
-          type="button"
-          className={view === "native" ? "active" : ""}
-          onClick={() => setView("native")}
-        >
-          Native
-        </button>
-        <button
-          type="button"
-          className={view === "embed" ? "active" : ""}
-          onClick={() => setView("embed")}
-        >
-          Embedded
-        </button>
-      </div>
+        🔍 Search <kbd>⌘T</kbd>
+      </button>
       <AuthChip />
     </header>
   );

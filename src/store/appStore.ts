@@ -18,6 +18,7 @@ import {
   startAttentionEngine,
 } from "../lib/attention";
 import type { PageDiff } from "../lib/blockDiff";
+import type { Crumb } from "../lib/breadcrumbs";
 import * as org from "../lib/orgDb";
 import * as writeback from "../lib/writeback";
 import type { Folder, SidebarItem, Space, Tier } from "../lib/orgDb";
@@ -130,6 +131,7 @@ interface AppState {
   pageDiffs: Record<string, PageDiff>;
   shortcutSheetOpen: boolean;
   peek: { pageId: string; anchorY: number } | null;
+  breadcrumbs: Crumb[];
   searchView: {
     query: string;
     results: { pageId: string; title: string; icon: string | null; source: "notion" | "cached"; snippet?: string }[];
@@ -231,6 +233,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   pageDiffs: {},
   shortcutSheetOpen: false,
   peek: null,
+  breadcrumbs: [],
   searchView: null,
 
   init: async () => {
@@ -310,6 +313,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       focusBlockId: null,
       writeError: null,
       searchView: null,
+      breadcrumbs: [],
     });
     get().closePeek();
     if (cached) await get().recordOpen(pageId, cached);
@@ -349,6 +353,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       title,
       blocksToPlainText(page.blocks as Parameters<typeof blocksToPlainText>[0]),
     );
+    if (get().auth.status === "ready" && pageId !== DEMO_PAGE_ID) {
+      void import("../lib/breadcrumbs").then(async (m) => {
+        const crumbs = await m.loadBreadcrumbs(pageId, page.page);
+        if (get().pageId === pageId) set({ breadcrumbs: crumbs });
+      });
+    }
     // MRU stack for the Ctrl+Tab switcher
     const mru = [
       { pageId, title, icon },
