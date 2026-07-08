@@ -1,5 +1,7 @@
 import type { CSSProperties } from "react";
 import katex from "katex";
+import { useAppStore } from "../store/appStore";
+import { normalizePageId } from "../lib/fetchPage";
 import type { RichTextItem } from "../lib/types";
 
 /** Notion text colors mapped onto Hive/Lattice-adjacent values. */
@@ -72,8 +74,20 @@ function Leaf({ item }: { item: RichTextItem }) {
   );
 
   if (href) {
+    // Notion links (incl. @page mentions) stay inside Hive
+    const inHive = /notion\.(so|com)/i.test(href) ? normalizePageId(href) : null;
     node = (
-      <a href={href} target="_blank" rel="noreferrer">
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        onClick={(e) => {
+          if (inHive) {
+            e.preventDefault();
+            void useAppStore.getState().openPage(inHive);
+          }
+        }}
+      >
         {node}
       </a>
     );

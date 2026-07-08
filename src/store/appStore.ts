@@ -70,6 +70,14 @@ function requestCommit(blockId: string) {
   window.dispatchEvent(new CustomEvent("hive-commit-block", { detail: blockId }));
 }
 
+/** Is the caret currently inside this block's editor? Remaps change the
+ * block's React key, which REMOUNTS the editor and silently kills the
+ * caret mid-typing — callers use this to restore focus afterwards. */
+function isBlockFocused(blockId: string): boolean {
+  const el = document.activeElement as HTMLElement | null;
+  return !!el && el.dataset?.bid === blockId;
+}
+
 /** Shared optimistic-write plumbing for block mutations (serialized). */
 async function applyWrite(
   get: () => AppState,
@@ -107,11 +115,13 @@ async function applyWrite(
             const current = get();
             if (current.pageId !== pageId || !current.page) return;
             writeback.flushPendingLocalText(mapping.from, mapping.to!);
+            const wasFocused = isBlockFocused(mapping.from);
             set({
               page: {
                 ...current.page,
                 blocks: writeback.remapBlockId(current.page.blocks, mapping.from, mapping.to!),
               },
+              ...(wasFocused ? { focusBlockId: mapping.to } : {}),
             });
           });
         })
@@ -715,13 +725,16 @@ export const useAppStore = create<AppState>((set, get) => ({
             const current = get();
             if (current.pageId !== pageId || !current.page) return;
             writeback.flushPendingLocalText(result.newBlockId, realId);
+            const wasFocused = isBlockFocused(result.newBlockId);
             set({
               page: {
                 ...current.page,
                 blocks: writeback.remapBlockId(current.page.blocks, result.newBlockId, realId),
               },
               focusBlockId:
-                get().focusBlockId === result.newBlockId ? realId : get().focusBlockId,
+                wasFocused || get().focusBlockId === result.newBlockId
+                  ? realId
+                  : get().focusBlockId,
             });
           });
         })
@@ -753,11 +766,13 @@ export const useAppStore = create<AppState>((set, get) => ({
             const current = get();
             if (current.pageId !== pageId || !current.page) return;
             writeback.flushPendingLocalText(blockId, realId);
+            const wasFocused = isBlockFocused(blockId);
             set({
               page: {
                 ...current.page,
                 blocks: writeback.remapBlockId(current.page.blocks, blockId, realId),
               },
+              ...(wasFocused ? { focusBlockId: realId } : {}),
             });
           });
         })

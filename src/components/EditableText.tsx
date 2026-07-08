@@ -311,10 +311,22 @@ export function EditableText({
     if (el.innerHTML !== html) el.innerHTML = html;
   });
 
-  // Focus requests (e.g. the paragraph just created by Enter).
+  // Focus requests: the paragraph just created by Enter, or this block
+  // remounting after an id remap while the user was typing in it. Plain
+  // .focus() parks the caret at the START — put it at the end, where the
+  // typist left off.
   useEffect(() => {
     if (focusBlockId === block.id && ref.current) {
-      ref.current.focus();
+      const el = ref.current;
+      el.focus();
+      if (el.childNodes.length > 0) {
+        const sel = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        range.collapse(false);
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+      }
       setFocusBlock(null);
     }
   }, [focusBlockId, block.id, setFocusBlock]);
@@ -542,6 +554,7 @@ export function EditableText({
       <div
         ref={ref}
         className="hive-editable"
+        data-bid={block.id}
         contentEditable
         suppressContentEditableWarning
         spellCheck={false}
