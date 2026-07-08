@@ -11,6 +11,7 @@ import { PeekLayer } from "./components/PeekLayer";
 import { SplitPane } from "./components/SplitPane";
 import { InboxPanel } from "./components/InboxPanel";
 import { CaptureModal } from "./components/CaptureModal";
+import { HomeScreen } from "./components/HomeScreen";
 import { OutlineRail } from "./components/OutlineRail";
 import { ShortcutSheet } from "./components/ShortcutSheet";
 import { installKeymap } from "./lib/keymap";
@@ -315,15 +316,7 @@ function Content() {
     );
   }
 
-  return (
-    <Notice tone="neutral" title="Phase 2 — sidebar & Spaces">
-      <p>
-        <kbd>⌘T</kbd> to search and open docs. Open docs land in Today, pin
-        what should persist, <kbd>⌃1–9</kbd> switches Spaces.
-      </p>
-      <DemoButton />
-    </Notice>
-  );
+  return <HomeScreen />;
 }
 
 export default function App() {

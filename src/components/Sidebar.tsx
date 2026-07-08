@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { Bell } from "@phosphor-icons/react";
 import { useAppStore } from "../store/appStore";
 import { SpaceSwitcher } from "./SpaceSwitcher";
 import type { SidebarItem, Tier } from "../lib/orgDb";
@@ -293,7 +294,8 @@ function InboxBell() {
   const setInboxOpen = useAppStore((s) => s.setInboxOpen);
   return (
     <button className="hive-inbox-bell" onClick={() => setInboxOpen(true)} title="Comments & mentions inbox">
-      🔔 Inbox{count > 0 && <span className="hive-space-badge" style={{ position: "static", marginLeft: 6 }}>{count}</span>}
+      <Bell size={14} weight={count > 0 ? "fill" : "regular"} style={{ marginRight: 5 }} />
+      Inbox{count > 0 && <span className="hive-space-badge" style={{ position: "static", marginLeft: 6 }}>{count}</span>}
     </button>
   );
 }

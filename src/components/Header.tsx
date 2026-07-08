@@ -1,3 +1,4 @@
+import { MagnifyingGlass, Sidebar as SidebarIcon } from "@phosphor-icons/react";
 import { useAppStore } from "../store/appStore";
 import { pageTitle } from "../lib/pageMeta";
 
@@ -86,7 +87,7 @@ export function Header() {
         title={`${sidebarVisible ? "Hide" : "Show"} sidebar (⌘\\)`}
         onClick={toggleSidebar}
       >
-        ◧
+        <SidebarIcon size={17} weight="bold" />
       </button>
       <span className="hive-logo">🐝</span>
       <Breadcrumbs />
@@ -96,7 +97,7 @@ export function Header() {
         onClick={() => setCommandBarOpen(true)}
         title="Search docs, Notion, and actions"
       >
-        🔍 Search <kbd>⌘T</kbd>
+        <MagnifyingGlass size={14} weight="bold" /> Search <kbd>⌘T</kbd>
       </button>
       <AuthChip />
     </header>

@@ -1562,6 +1562,148 @@ tr:hover .hive-row-gutter {
   font-size: 0.7rem;
 }
 
+.hive-home {
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: 9vh 2rem 4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+.hive-home .hero {
+  text-align: center;
+}
+.hive-home .hero .bee {
+  font-size: 2.6rem;
+  display: block;
+  margin-bottom: 4px;
+}
+.hive-home .hero h1 {
+  font-size: 1.6rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+.hive-home .hero p {
+  color: var(--hive-color-fg-muted);
+  margin: 4px 0 0;
+}
+.hive-home .actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.hive-home .card {
+  font: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 10px 12px;
+  background: var(--hive-color-bg-surface);
+  border: 1px solid var(--hive-color-border-subtle);
+  border-radius: var(--hive-radius-lg);
+  color: var(--hive-color-fg-secondary);
+  cursor: pointer;
+  position: relative;
+  box-shadow: var(--hive-shadow-sm);
+  transition: border-color 120ms, transform 120ms;
+}
+.hive-home .card:hover {
+  border-color: var(--hive-color-accent);
+  color: var(--hive-color-fg);
+  transform: translateY(-1px);
+}
+.hive-home .card .t {
+  font-weight: 500;
+  font-size: 0.85rem;
+}
+.hive-home .card kbd {
+  font-size: 0.65rem;
+}
+.hive-home .card .badge {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  background: var(--hive-color-critical-fg);
+  color: #fff;
+  border-radius: 8px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 1px 6px;
+}
+.hive-home .recents .label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--hive-color-fg-muted);
+  margin-bottom: 6px;
+}
+.hive-home .recent {
+  font: inherit;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  background: none;
+  border-radius: var(--hive-radius);
+  color: var(--hive-color-fg-secondary);
+  cursor: pointer;
+  text-align: left;
+}
+.hive-home .recent:hover {
+  background: var(--hive-color-bg-subtle);
+  color: var(--hive-color-fg);
+}
+.hive-home .recent .title {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hive-home .recent .go {
+  opacity: 0;
+}
+.hive-home .recent:hover .go {
+  opacity: 1;
+}
+.hive-home .tip {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  background: var(--hive-color-accent-subtle);
+  border-radius: var(--hive-radius);
+  padding: 12px 14px;
+  font-size: 0.85rem;
+  color: var(--hive-color-fg-secondary);
+  transition: opacity 250ms ease;
+  min-height: 3.4em;
+}
+.hive-home .tip.fading {
+  opacity: 0;
+}
+.hive-home .tip .bulb {
+  color: var(--hive-color-warning-fg);
+  flex-shrink: 0;
+  transform: translateY(2px);
+}
+.hive-home .demo-link {
+  font: inherit;
+  font-size: 0.8rem;
+  border: none;
+  background: none;
+  color: var(--hive-color-fg-muted);
+  cursor: pointer;
+  text-align: center;
+}
+.hive-home .demo-link:hover {
+  color: var(--hive-color-accent);
+}
+
 /* ---- outline rail (right edge, hover to expand) ---- */
 
 .hive-outline {
