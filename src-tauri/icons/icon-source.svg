@@ -1,33 +1,32 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-  <!-- Hive icon v2 — recreation of Taylor's reference: navy field, floating
-       honeycomb hexes, layered skep in honey tones with an olive band, white
-       Notion-style N badge. -->
+  <!-- Hive icon v3 — honeycomb flower: six hex cells around a white Notion-
+       style page (folded corner, serif N) on navy. -->
   <defs>
     <clipPath id="squircle">
-      <rect x="0" y="0" width="1024" height="1024" rx="236"/>
+      <rect x="0" y="0" width="1024" height="1024" rx="232"/>
     </clipPath>
   </defs>
 
   <g clip-path="url(#squircle)">
-    <rect x="0" y="0" width="1024" height="1024" fill="#1a2a4a"/>
+    <rect x="0" y="0" width="1024" height="1024" fill="#152238"/>
 
-    <!-- floating hexagons -->
-    <polygon points="300,190 341,213 341,260 300,283 259,260 259,213" fill="#2fa5dd"/>
-    <polygon points="906,285 949,309 949,358 906,382 863,358 863,309" fill="#f7941e"/>
-    <polygon points="168,560 206,582 206,626 168,648 130,626 130,582" fill="#aebf38"/>
+    <!-- flat-top hexes, R=132 (width 264, height ~229) -->
+    <!-- top: yellow -->
+    <polygon points="378,275 444,161 576,161 642,275 576,389 444,389" fill="#f5b21b" transform="translate(2,0)"/>
+    <!-- upper-left: orange -->
+    <polygon points="156,400 222,286 354,286 420,400 354,514 222,514" fill="#f7941e"/>
+    <!-- upper-right: orange -->
+    <polygon points="604,402 670,288 802,288 868,402 802,516 670,516" fill="#f7941e"/>
+    <!-- lower-left: blue -->
+    <polygon points="156,652 222,538 354,538 420,652 354,766 222,766" fill="#29abe2"/>
+    <!-- lower-right: green -->
+    <polygon points="604,652 670,538 802,538 868,652 802,766 670,766" fill="#a9c23f"/>
+    <!-- bottom: teal -->
+    <polygon points="378,777 444,663 576,663 642,777 576,891 444,891" fill="#1fa8a0"/>
 
-    <!-- skep: dome + bands, navy gaps between -->
-    <path d="M 512 158 C 398 158 342 232 342 296 L 682 296 C 682 232 626 158 512 158 Z" fill="#f5a81c"/>
-    <rect x="290" y="318" width="444" height="112" rx="56" fill="#f7941e"/>
-    <rect x="258" y="452" width="508" height="112" rx="56" fill="#fdb515"/>
-    <rect x="240" y="586" width="544" height="112" rx="56" fill="#aebf38"/>
-    <rect x="212" y="720" width="600" height="150" rx="66" fill="#f7941e"/>
-
-    <!-- entrance: navy doorway opening from the gap above the base band -->
-    <path d="M 448 700 L 576 700 L 576 800 C 576 826 552 840 512 840 C 472 840 448 826 448 800 Z" fill="#1a2a4a"/>
-
-    <!-- Notion-style N badge -->
-    <rect x="366" y="400" width="292" height="292" rx="52" fill="#ffffff" stroke="#1a2a4a" stroke-width="14"/>
-    <text x="512" y="640" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-weight="bold" font-size="230" fill="#101010">N</text>
+    <!-- white page with folded corner -->
+    <path d="M 342 384 Q 342 356 370 356 L 604 356 L 682 434 L 682 668 Q 682 696 654 696 L 370 696 Q 342 696 342 668 Z" fill="#f7f4ec"/>
+    <path d="M 604 356 L 682 434 L 618 434 Q 604 434 604 420 Z" fill="#ddd8c8"/>
+    <text x="500" y="614" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-weight="bold" font-size="240" fill="#101010">N</text>
   </g>
 </svg>
