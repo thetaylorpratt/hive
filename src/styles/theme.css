@@ -406,6 +406,45 @@ tr:hover .hive-row-gutter {
   color: var(--hive-color-accent);
 }
 
+.hive-search-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.hive-search-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: var(--hive-radius);
+  cursor: pointer;
+}
+.hive-search-row:hover {
+  background: var(--hive-color-bg-subtle);
+}
+.hive-search-row .body {
+  flex: 1;
+  min-width: 0;
+}
+.hive-search-row .title {
+  display: block;
+  font-weight: 500;
+}
+.hive-search-row .snippet {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--hive-color-fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hive-search-row .hint {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  color: var(--hive-color-fg-muted);
+}
+
 /* ---- Tier 2 blocks ---- */
 
 .hive-image {

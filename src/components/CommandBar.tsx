@@ -320,10 +320,11 @@ export function CommandBar() {
       });
     }
 
-    for (const r of remote) {
-      const score = fuzzyScore(query, r.title) ?? 0;
-      scored.push({ score, result: r });
-    }
+    // Notion orders by relevance (titles only) — keep its order rather than
+    // re-ranking with our fuzzy scorer, which scrambles it.
+    remote.forEach((r, i) => {
+      scored.push({ score: 2.5 - i * 0.05, result: r });
+    });
 
     const seen = new Set<string>();
     const merged: Result[] = [];
@@ -333,7 +334,18 @@ export function CommandBar() {
       seen.add(dedupeKey);
       merged.push(result);
     }
-    return merged.slice(0, 12);
+    const top = merged.slice(0, 11);
+    if (q.length >= 2) {
+      top.push({
+        key: "action-search-all",
+        title: `Search everything for “${query.trim()}”`,
+        icon: "🔍",
+        source: "action",
+        hint: "full results",
+        run: () => void useAppStore.getState().openSearch(query),
+      });
+    }
+    return top;
   }, [query, sidebarItems, remote, recents, cached, actions]);
 
   useEffect(() => {

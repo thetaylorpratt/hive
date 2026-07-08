@@ -108,7 +108,51 @@ function DemoButton() {
   );
 }
 
+function SearchResults() {
+  const searchView = useAppStore((s) => s.searchView)!;
+  const openPage = useAppStore((s) => s.openPage);
+  const loadMoreSearch = useAppStore((s) => s.loadMoreSearch);
+  const closeSearch = useAppStore((s) => s.closeSearch);
+  return (
+    <article className="hive-doc hive-page-in">
+      <div className="hive-search-head">
+        <h1 className="hive-page-title">Results for “{searchView.query}”</h1>
+        <button className="hive-btn hive-btn-secondary" onClick={closeSearch}>
+          Close
+        </button>
+      </div>
+      {searchView.results.map((r) => (
+        <div
+          key={r.pageId}
+          className="hive-search-row"
+          onClick={() => void openPage(r.pageId)}
+        >
+          <span className="icon">{r.icon ?? "📄"}</span>
+          <span className="body">
+            <span className="title">{r.title}</span>
+            {r.snippet && <span className="snippet">{r.snippet}</span>}
+          </span>
+          <span className="hint">{r.source === "cached" ? "content match" : "Notion"}</span>
+        </div>
+      ))}
+      {searchView.results.length === 0 && !searchView.loading && (
+        <p style={{ color: "var(--hive-color-fg-muted)" }}>
+          No matches. Title search only covers pages connected to the
+          integration; content search grows as the background indexer crawls.
+        </p>
+      )}
+      {searchView.loading && <p style={{ color: "var(--hive-color-fg-muted)" }}>Searching…</p>}
+      {searchView.cursor && !searchView.loading && (
+        <button className="hive-btn hive-btn-secondary" onClick={() => void loadMoreSearch()}>
+          Load more
+        </button>
+      )}
+    </article>
+  );
+}
+
 function Content() {
+  const searchView = useAppStore((s) => s.searchView);
   const auth = useAppStore((s) => s.auth);
   const page = useAppStore((s) => s.page);
   const pageStatus = useAppStore((s) => s.pageStatus);
@@ -119,6 +163,8 @@ function Content() {
   const pageId = useAppStore((s) => s.pageId);
   const pageDiffs = useAppStore((s) => s.pageDiffs);
   const dismissDiff = useAppStore((s) => s.dismissDiff);
+
+  if (searchView) return <SearchResults />;
 
   // A loaded page (including the demo fixture) always wins over auth notices.
   if (page && pageStatus !== "error" && pageStatus !== "loading") {

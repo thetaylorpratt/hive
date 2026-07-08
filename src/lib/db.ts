@@ -100,6 +100,38 @@ export async function indexPageForSearch(
   }
 }
 
+export async function hasCachedPage(pageId: string): Promise<boolean> {
+  try {
+    const db = await getDb();
+    const rows = await db.select<{ n: number }[]>(
+      "SELECT 1 AS n FROM page_cache WHERE notion_page_id = $1 LIMIT 1",
+      [pageId],
+    );
+    return rows.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/** Index just a title (uncrawled page) without overwriting an existing body. */
+export async function indexTitleIfNew(pageId: string, title: string): Promise<void> {
+  try {
+    const db = await getDb();
+    if (!(await ensureFts(db))) return;
+    const rows = await db.select<{ n: number }[]>(
+      "SELECT 1 AS n FROM page_fts WHERE notion_page_id = $1 LIMIT 1",
+      [pageId],
+    );
+    if (rows.length > 0) return;
+    await db.execute(
+      "INSERT INTO page_fts (notion_page_id, title, body) VALUES ($1, $2, '')",
+      [pageId, title],
+    );
+  } catch {
+    /* best-effort */
+  }
+}
+
 export interface SearchHit {
   pageId: string;
   title: string;

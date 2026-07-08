@@ -104,8 +104,21 @@ function readRetryAfter(err: unknown): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+let inflight = 0;
+
+/** True when nothing is queued or executing — crawlers should only run then. */
+export function queueIdle(): boolean {
+  return inflight === 0;
+}
+
 const notionQueue = new NotionQueue();
 
 export function enqueue<T>(fn: () => Promise<T>): Promise<T> {
-  return notionQueue.schedule(fn);
+  inflight += 1;
+  const done = () => {
+    inflight -= 1;
+  };
+  const run = notionQueue.schedule(fn);
+  run.then(done, done);
+  return run;
 }

@@ -130,6 +130,12 @@ interface AppState {
   pageDiffs: Record<string, PageDiff>;
   shortcutSheetOpen: boolean;
   peek: { pageId: string; anchorY: number } | null;
+  searchView: {
+    query: string;
+    results: { pageId: string; title: string; icon: string | null; source: "notion" | "cached"; snippet?: string }[];
+    cursor: string | null;
+    loading: boolean;
+  } | null;
 
   init: () => Promise<void>;
   openPage: (input: string) => Promise<void>;
@@ -193,6 +199,9 @@ interface AppState {
   refreshCurrentIfStale: () => Promise<void>;
   dismissDiff: (pageId: string) => void;
   setShortcutSheetOpen: (open: boolean) => void;
+  openSearch: (query: string) => Promise<void>;
+  loadMoreSearch: () => Promise<void>;
+  closeSearch: () => void;
   requestPeek: (pageId: string, anchorY: number) => void;
   releasePeek: () => void;
   holdPeek: () => void;
@@ -222,6 +231,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   pageDiffs: {},
   shortcutSheetOpen: false,
   peek: null,
+  searchView: null,
 
   init: async () => {
     if (initStarted) return; // StrictMode double-invoke / re-mount guard
@@ -264,6 +274,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         void get().recomputeUnread();
         void get().refreshCurrentIfStale();
       });
+      void import("../lib/indexer").then((m) => m.startIndexer());
     } catch (err) {
       set({
         auth: {
@@ -298,6 +309,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       pageError: null,
       focusBlockId: null,
       writeError: null,
+      searchView: null,
     });
     get().closePeek();
     if (cached) await get().recordOpen(pageId, cached);
@@ -791,6 +803,76 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setShortcutSheetOpen: (open: boolean) => set({ shortcutSheetOpen: open }),
+
+  openSearch: async (query: string) => {
+    const q = query.trim();
+    if (!q) return;
+    set({ searchView: { query: q, results: [], cursor: null, loading: true } });
+    // Local full-text hits first (these include body matches the API can't do)
+    type Row = { pageId: string; title: string; icon: string | null; source: "notion" | "cached"; snippet?: string };
+    let local: Row[] = [];
+    try {
+      const { searchCachedPages } = await import("../lib/db");
+      local = (await searchCachedPages(q)).map((h) => ({
+        pageId: h.pageId, title: h.title, icon: null,
+        source: "cached" as const, snippet: h.snippet,
+      }));
+    } catch { /* no FTS */ }
+    let remote: Row[] = [];
+    let cursor: string | null = null;
+    if (get().auth.status === "ready") {
+      try {
+        const resp = (await enqueue(() =>
+          notion().search({ query: q, page_size: 25, filter: { property: "object", value: "page" } }),
+        )) as { results: Record<string, unknown>[]; has_more: boolean; next_cursor: string | null };
+        cursor = resp.has_more ? resp.next_cursor : null;
+        remote = resp.results.map((p) => ({
+          pageId: p.id as string, title: pageTitle(p), icon: pageEmoji(p),
+          source: "notion" as const,
+        }));
+      } catch { /* keep local */ }
+    }
+    const seen = new Set(local.map((l) => l.pageId));
+    const merged = [...local, ...remote.filter((r) => !seen.has(r.pageId))];
+    if (get().searchView?.query !== q) return; // superseded
+    set({ searchView: { query: q, results: merged, cursor, loading: false } });
+  },
+
+  loadMoreSearch: async () => {
+    const view = get().searchView;
+    if (!view?.cursor || view.loading) return;
+    set({ searchView: { ...view, loading: true } });
+    try {
+      const resp = (await enqueue(() =>
+        notion().search({
+          query: view.query, page_size: 25, start_cursor: view.cursor!,
+          filter: { property: "object", value: "page" },
+        }),
+      )) as { results: Record<string, unknown>[]; has_more: boolean; next_cursor: string | null };
+      const seen = new Set(view.results.map((r) => r.pageId));
+      const more = resp.results
+        .map((p) => ({
+          pageId: p.id as string, title: pageTitle(p),
+          icon: pageEmoji(p), source: "notion" as const,
+        }))
+        .filter((r) => !seen.has(r.pageId));
+      const current = get().searchView;
+      if (current?.query !== view.query) return;
+      set({
+        searchView: {
+          ...current,
+          results: [...current.results, ...more],
+          cursor: resp.has_more ? resp.next_cursor : null,
+          loading: false,
+        },
+      });
+    } catch {
+      const current = get().searchView;
+      if (current) set({ searchView: { ...current, loading: false } });
+    }
+  },
+
+  closeSearch: () => set({ searchView: null }),
 
   // Peek (Arc's hover preview): 400ms intent delay to open, 250ms grace to
   // travel from the row into the panel before it closes.
