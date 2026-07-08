@@ -10,6 +10,7 @@ import { PropertiesHeader } from "./components/PropertiesHeader";
 import { PeekLayer } from "./components/PeekLayer";
 import { SplitPane } from "./components/SplitPane";
 import { InboxPanel } from "./components/InboxPanel";
+import { CaptureModal } from "./components/CaptureModal";
 import { OutlineRail } from "./components/OutlineRail";
 import { ShortcutSheet } from "./components/ShortcutSheet";
 import { installKeymap } from "./lib/keymap";
@@ -378,6 +379,7 @@ export default function App() {
       else if (action === "focus-mode") s.toggleFocusMode();
       else if (action === "shortcut-sheet")
         s.setShortcutSheetOpen(!s.shortcutSheetOpen);
+      else if (action === "quick-capture") s.setCaptureOpen(!s.captureOpen);
       else if (action.startsWith("switch-space-")) {
         void s.switchSpaceByIndex(Number(action.slice("switch-space-".length)));
       }
@@ -402,6 +404,7 @@ export default function App() {
       <Toast />
       <ShortcutSheet />
       <InboxPanel />
+      <CaptureModal />
       <PeekLayer />
     </div>
   );

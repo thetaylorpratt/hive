@@ -209,6 +209,19 @@ constructs). This feeds the Phase 3 Tier 2 scoping.
   `docs/POLISH_OPPORTUNITIES.md` (FTS5 search, autoformat, contextual
   palette actions, MRU switcher, block-diffs as the signature feature).
 
+## 8. Phase completion (2026-07-08)
+
+**All six phases are built.** ADR-001 accepted (native rendering). Phase 4:
+split view (read-only pane) + comments/mentions inbox with macOS
+notifications. Phase 5: native editing (shipped earlier, verified live).
+Phase 6: ATC routing rules (ancestor → Space), in-app quick capture
+(⌘⌥N → real Notion page under `capturePageId`), header v2 with breadcrumbs
++ sub-page navigation, keymap/escape hatches throughout. Known v1 scope
+cuts: split panes are read-only and not yet saveable as sidebar entries;
+quick capture is in-app (system-wide floating window needs the
+global-shortcut plugin); ATC rules have no management UI (palette-add only,
+localStorage). Project mode shifts to daily-driving + bug fixing.
+
 ## 7. Immediate next steps
 
 *(updated 2026-07-07 — TOKEN LIVE: pipe verified end-to-end, including an

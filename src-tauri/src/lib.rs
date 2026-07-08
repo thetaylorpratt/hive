@@ -5,6 +5,7 @@ use tauri_plugin_sql::{Migration, MigrationKind};
 #[derive(serde::Serialize, Default)]
 struct HiveConfig {
     notion_token: Option<String>,
+    capture_page_id: Option<String>,
 }
 
 #[tauri::command]
@@ -24,8 +25,13 @@ fn get_config() -> HiveConfig {
         .or_else(|| json.get("notion_token"))
         .and_then(|v| v.as_str())
         .map(str::to_owned);
+    let capture = json
+        .get("capturePageId")
+        .and_then(|v| v.as_str())
+        .map(str::to_owned);
     HiveConfig {
         notion_token: token,
+        capture_page_id: capture,
     }
 }
 

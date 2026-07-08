@@ -1504,6 +1504,31 @@ tr:hover .hive-row-gutter {
 }
 .hive-inbox .done:hover { color: var(--hive-color-success-fg); }
 
+.hive-capture {
+  width: min(520px, 90vw);
+  background: var(--hive-color-bg-surface);
+  border: 1px solid var(--hive-color-border-subtle);
+  border-radius: var(--hive-radius-lg);
+  box-shadow: var(--hive-shadow-popover);
+  padding: 12px;
+}
+.hive-capture textarea {
+  width: 100%;
+  min-height: 140px;
+  font: inherit;
+  border: none;
+  outline: none;
+  resize: vertical;
+  background: transparent;
+  color: var(--hive-color-fg);
+}
+.hive-capture .hint {
+  font-size: 0.72rem;
+  color: var(--hive-color-fg-muted);
+  padding-top: 6px;
+  border-top: 1px solid var(--hive-color-border-subtle);
+}
+
 /* ---- outline rail (right edge, hover to expand) ---- */
 
 .hive-outline {

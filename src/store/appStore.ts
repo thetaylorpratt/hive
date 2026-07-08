@@ -135,6 +135,7 @@ interface AppState {
   split: { pageId: string; data: PageData | null } | null;
   inbox: { id: string; pageId: string; kind: "comment" | "mention"; author: string; snippet: string; createdAt: string }[];
   inboxOpen: boolean;
+  captureOpen: boolean;
   searchView: {
     query: string;
     results: { pageId: string; title: string; icon: string | null; source: "notion" | "cached"; snippet?: string }[];
@@ -208,6 +209,8 @@ interface AppState {
   refreshInbox: () => void;
   dismissInboxItem: (id: string) => void;
   setInboxOpen: (open: boolean) => void;
+  setCaptureOpen: (open: boolean) => void;
+  createCapture: (text: string) => Promise<void>;
   closeSplit: () => void;
   openSearch: (query: string) => Promise<void>;
   loadMoreSearch: () => Promise<void>;
@@ -245,6 +248,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   split: null,
   inbox: [],
   inboxOpen: false,
+  captureOpen: false,
   searchView: null,
 
   init: async () => {
@@ -372,6 +376,20 @@ export const useAppStore = create<AppState>((set, get) => ({
       void import("../lib/breadcrumbs").then(async (m) => {
         const crumbs = await m.loadBreadcrumbs(pageId, page.page);
         if (get().pageId === pageId) set({ breadcrumbs: crumbs });
+        // ATC: route the doc's sidebar entry to its rule's Space
+        const { matchRule } = await import("../lib/atc");
+        const rule = matchRule(crumbs.map((c) => c.pageId));
+        if (rule && rule.spaceId !== get().activeSpaceId) {
+          const item = get().sidebarItems.find(
+            (i) => i.notionPageId === pageId && i.tier === "today",
+          );
+          if (item) {
+            await org.updateItem(item.id, { spaceId: rule.spaceId });
+            await get().refreshSidebar();
+            const space = get().spaces.find((sp) => sp.id === rule.spaceId);
+            if (space) get().showToast(`Routed to ${space.name} (ATC rule)`);
+          }
+        }
       });
     }
     // MRU stack for the Ctrl+Tab switcher
@@ -867,6 +885,49 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
   setInboxOpen: (open: boolean) => set({ inboxOpen: open }),
+  setCaptureOpen: (open: boolean) => set({ captureOpen: open }),
+
+  /** Quick capture: create a real Notion page under config capturePageId. */
+  createCapture: async (text: string) => {
+    const lines = text.trim().split("\n");
+    const title = lines[0]?.slice(0, 120) || "Quick note";
+    const body = lines.slice(1).join("\n").trim();
+    try {
+      const config = await loadConfig();
+      const parent = config.capture_page_id;
+      if (!parent || get().auth.status !== "ready") {
+        get().showToast("Set capturePageId in ~/.hive/config.json first");
+        return;
+      }
+      const created = (await enqueue(() =>
+        notion().pages.create({
+          parent: { page_id: parent },
+          properties: {
+            title: { title: [{ text: { content: title } }] },
+          },
+          ...(body
+            ? {
+                children: [
+                  {
+                    paragraph: {
+                      rich_text: [{ text: { content: body.slice(0, 1900) } }],
+                    },
+                  } as never,
+                ],
+              }
+            : {}),
+        }),
+      )) as { id: string };
+      set({ captureOpen: false });
+      get().showToast(`Captured “${title}”`, async () => {
+        await get().openPage(created.id); // "undo" slot doubles as open
+      });
+    } catch (err) {
+      get().showToast(
+        `Capture failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  },
 
   openSearch: async (query: string) => {
     const q = query.trim();

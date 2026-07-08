@@ -95,6 +95,7 @@ function useActions(): Result[] {
   });
 
   const actions: Result[] = [
+    action("Quick capture", "📝", () => store.getState().setCaptureOpen(true), "⌘⌥N"),
     action("New Space", "✨", () => void store.getState().createSpace()),
     action("New folder", "📁", () => void store.getState().createFolder()),
     action("Toggle sidebar", "◧", () => store.getState().toggleSidebar(), "⌘\\"),
@@ -120,6 +121,20 @@ function useActions(): Result[] {
       action("Close split", "⫱", () => store.getState().closeSplit()),
       action("Pin current doc", "📌", () => void pinCurrent("pinned")),
       action("Favorite current doc", "★", () => void pinCurrent("favorite")),
+    );
+  }
+  const crumbs = useAppStore((s) => s.breadcrumbs);
+  if (realPage && crumbs.length > 0) {
+    const root = crumbs[0];
+    actions.push(
+      action(`Always route docs under “${root.title.slice(0, 24)}” to this Space`, "🛫", () => {
+        const s = store.getState();
+        if (!s.activeSpaceId) return;
+        void import("../lib/atc").then((m) => {
+          m.addRule({ ancestorId: root.pageId, ancestorTitle: root.title, spaceId: s.activeSpaceId! });
+          s.showToast(`ATC: docs under ${root.title} → this Space`);
+        });
+      }),
     );
   }
   if (realPage) {

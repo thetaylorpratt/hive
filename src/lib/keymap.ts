@@ -18,6 +18,7 @@ export const DEFAULT_BINDINGS: KeyBinding[] = [
   { combo: "meta+\\", action: "toggle-sidebar" },
   { combo: "meta+shift+f", action: "focus-mode" },
   { combo: "?", action: "shortcut-sheet" },
+  { combo: "meta+alt+n", action: "quick-capture" },
   ...Array.from({ length: 9 }, (_, i) => ({
     combo: `ctrl+${i + 1}`,
     action: `switch-space-${i + 1}`,
@@ -31,7 +32,10 @@ function comboOf(e: KeyboardEvent): string {
   if (e.altKey) parts.push("alt");
   // shift only matters for letter keys; symbols like "\" already encode it
   if (e.shiftKey && /^[a-z]$/i.test(e.key)) parts.push("shift");
-  parts.push(e.key.toLowerCase());
+  // Option mutates e.key on macOS (⌥N → "˜") — use the physical key instead
+  let key = e.key.toLowerCase();
+  if (e.altKey && /^Key[A-Z]$/.test(e.code)) key = e.code.slice(3).toLowerCase();
+  parts.push(key);
   return parts.join("+");
 }
 
