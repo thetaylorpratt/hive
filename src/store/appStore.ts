@@ -210,6 +210,7 @@ interface AppState {
   dismissInboxItem: (id: string) => void;
   setInboxOpen: (open: boolean) => void;
   setCaptureOpen: (open: boolean) => void;
+  createComment: (text: string, quote: string) => Promise<void>;
   createCapture: (text: string) => Promise<void>;
   closeSplit: () => void;
   openSearch: (query: string) => Promise<void>;
@@ -886,6 +887,42 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   setInboxOpen: (open: boolean) => set({ inboxOpen: open }),
   setCaptureOpen: (open: boolean) => set({ captureOpen: open }),
+
+  /**
+   * Comment on the open page. The API cannot anchor new inline threads
+   * (page-level comments or thread replies only), so the selection is
+   * quoted for context — teammates see it in Notion's page comments.
+   */
+  createComment: async (text: string, quote: string) => {
+    const { pageId, auth } = get();
+    if (!pageId || pageId === DEMO_PAGE_ID || auth.status !== "ready") {
+      get().showToast("Comments need a real page and a connected token");
+      return;
+    }
+    try {
+      const rich: unknown[] = [];
+      if (quote.trim()) {
+        rich.push({
+          text: { content: `“${quote.trim().slice(0, 120)}” — ` },
+          annotations: { italic: true },
+        });
+      }
+      rich.push({ text: { content: text } });
+      await enqueue(() =>
+        notion().comments.create({
+          parent: { page_id: pageId },
+          rich_text: rich as never,
+        }),
+      );
+      get().showToast("Comment posted to the page");
+    } catch (err) {
+      get().showToast(
+        `Comment failed (does the integration have the comment capability?): ${
+          err instanceof Error ? err.message : err
+        }`,
+      );
+    }
+  },
 
   /** Quick capture: create a real Notion page under config capturePageId. */
   createCapture: async (text: string) => {

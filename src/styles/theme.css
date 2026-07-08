@@ -1529,6 +1529,39 @@ tr:hover .hive-row-gutter {
   border-top: 1px solid var(--hive-color-border-subtle);
 }
 
+.hive-seltoolbar {
+  position: fixed;
+  transform: translate(-50%, calc(-100% - 8px));
+  z-index: 800;
+  display: flex;
+  gap: 2px;
+  background: var(--hive-color-bg-surface);
+  border: 1px solid var(--hive-color-border-subtle);
+  border-radius: var(--hive-radius);
+  box-shadow: var(--hive-shadow-popover);
+  padding: 3px;
+  animation: hive-page-in 100ms ease-out;
+}
+.hive-seltoolbar button {
+  font: inherit;
+  font-size: 0.82rem;
+  border: none;
+  background: none;
+  color: var(--hive-color-fg-secondary);
+  cursor: pointer;
+  padding: 3px 7px;
+  border-radius: var(--hive-radius-sm);
+  min-width: 26px;
+}
+.hive-seltoolbar button:hover {
+  background: var(--hive-color-bg-subtle);
+  color: var(--hive-color-fg);
+}
+.hive-seltoolbar button.mono {
+  font-family: var(--hive-font-mono);
+  font-size: 0.7rem;
+}
+
 /* ---- outline rail (right edge, hover to expand) ---- */
 
 .hive-outline {

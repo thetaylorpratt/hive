@@ -192,7 +192,23 @@ export function EditableText({
   const emojiMatches = emojiMenu ? searchEmoji(emojiMenu.query) : [];
   const [linkInput, setLinkInput] = useState(false);
   const [colorMenu, setColorMenu] = useState(false);
+  const [commentInput, setCommentInput] = useState(false);
+  const [toolbar, setToolbar] = useState<{ x: number; y: number } | null>(null);
   const savedRange = useRef<Range | null>(null);
+
+  const updateToolbar = () => {
+    const sel = window.getSelection();
+    const el = ref.current;
+    if (
+      !sel || sel.rangeCount === 0 || sel.isCollapsed || !el ||
+      !el.contains(sel.anchorNode)
+    ) {
+      setToolbar(null);
+      return;
+    }
+    const rect = sel.getRangeAt(0).getBoundingClientRect();
+    setToolbar({ x: rect.left + rect.width / 2, y: rect.top });
+  };
 
   const saveSelection = () => {
     const sel = window.getSelection();
@@ -492,13 +508,18 @@ export function EditableText({
         spellCheck={false}
         data-placeholder={block.type === "paragraph" ? "Type, or / for blocks…" : "Type…"}
         onBlur={() => {
-          if (linkInput) return; // focus moved into our own popover
+          setToolbar(null);
+          if (linkInput || commentInput) return; // focus moved into our popover
           setSlash(null);
           setEmojiMenu(null);
           setColorMenu(false);
           commit();
         }}
         onKeyDown={onKeyDown}
+        onMouseUp={updateToolbar}
+        onKeyUp={(e) => {
+          if (e.shiftKey || toolbar) updateToolbar();
+        }}
         onFocus={(e) => {
           if (useAppStore.getState().focusMode) {
             e.currentTarget.scrollIntoView({ block: "center", behavior: "smooth" });
@@ -530,6 +551,45 @@ export function EditableText({
           }
         }}
       />
+      {toolbar && !linkInput && !colorMenu && !commentInput && (
+        <div
+          className="hive-seltoolbar"
+          style={{ left: toolbar.x, top: toolbar.y }}
+          onMouseDown={(e) => e.preventDefault() /* keep the selection */}
+        >
+          <button title="Bold (⌘B)" onClick={() => document.execCommand("bold")}><b>B</b></button>
+          <button title="Italic (⌘I)" onClick={() => document.execCommand("italic")}><i>I</i></button>
+          <button title="Underline (⌘U)" onClick={() => document.execCommand("underline")}><u>U</u></button>
+          <button title="Strikethrough (⌘⇧S)" onClick={() => document.execCommand("strikeThrough")}><s>S</s></button>
+          <button title="Inline code (⌘E)" onClick={() => wrapInlineCode()} className="mono">{"</>"}</button>
+          <button title="Link (⌘K)" onClick={() => { if (saveSelection()) { setToolbar(null); setLinkInput(true); } }}>🔗</button>
+          <button title="Color (⌘⇧H)" onClick={() => { if (saveSelection()) { setToolbar(null); setColorMenu(true); } }}>🎨</button>
+          <button title="Comment on page (quotes selection)" onClick={() => { if (saveSelection()) { setToolbar(null); setCommentInput(true); } }}>💬</button>
+        </div>
+      )}
+      {commentInput && (
+        <div className="hive-slash-menu hive-link-input">
+          <input
+            className="hive-input"
+            autoFocus
+            placeholder="Comment… (posted to the page, quoting selection)"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                const value = (e.target as HTMLInputElement).value.trim();
+                const quote = savedRange.current?.toString() ?? "";
+                setCommentInput(false);
+                if (value) {
+                  void useAppStore.getState().createComment(value, quote);
+                }
+                ref.current?.focus();
+              }
+              if (e.key === "Escape") setCommentInput(false);
+              e.stopPropagation();
+            }}
+            onBlur={() => setCommentInput(false)}
+          />
+        </div>
+      )}
       {linkInput && (
         <div className="hive-slash-menu hive-link-input">
           <input
