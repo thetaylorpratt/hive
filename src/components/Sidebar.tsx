@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Bell } from "@phosphor-icons/react";
+import { Bell, PencilSimpleLine } from "@phosphor-icons/react";
 import { Glyph } from "../lib/iconSets";
 import { useAppStore } from "../store/appStore";
 import { SpaceSwitcher } from "./SpaceSwitcher";
@@ -22,7 +22,6 @@ function ItemRow({ item }: { item: SidebarItem }) {
   const removeItem = useAppStore((s) => s.removeItem);
   const currentPageId = useAppStore((s) => s.pageId);
   const unread = useAppStore((s) => s.unreadPageIds.has(item.notionPageId));
-  const openInSplit = useAppStore((s) => s.openInSplit);
   const requestPeek = useAppStore((s) => s.requestPeek);
   const releasePeek = useAppStore((s) => s.releasePeek);
   const closePeek = useAppStore((s) => s.closePeek);
@@ -51,15 +50,6 @@ function ItemRow({ item }: { item: SidebarItem }) {
       <span className="title">{item.titleCache}</span>
       {unread && <span className="hive-unread-dot" title="Changed since you last opened it" />}
       <span className="actions" onClick={(e) => e.stopPropagation()}>
-        <button
-          title="Open in right split"
-          onClick={() => {
-            closePeek();
-            void openInSplit(item.notionPageId);
-          }}
-        >
-          ⫲
-        </button>
         {item.tier !== "favorite" && (
           <button
             title="Favorite (all Spaces)"
@@ -309,6 +299,7 @@ export function Sidebar() {
   const sidebarItems = useAppStore((s) => s.sidebarItems);
   const folders = useAppStore((s) => s.folders);
   const createFolder = useAppStore((s) => s.createFolder);
+  const createPage = useAppStore((s) => s.createPage);
   const openPage = useAppStore((s) => s.openPage);
   const spaces = useAppStore((s) => s.spaces);
   const activeSpaceId = useAppStore((s) => s.activeSpaceId);
@@ -361,7 +352,16 @@ export function Sidebar() {
         key={activeSpaceId ?? "none"}
         className={`hive-space-pane ${direction}`}
       >
-      <SpaceName />
+      <div className="hive-side-toprow">
+        <SpaceName />
+        <button
+          className="hive-newpage-btn"
+          title="New page (in your scratchpad)"
+          onClick={() => void createPage(null)}
+        >
+          <PencilSimpleLine size={15} weight="bold" />
+        </button>
+      </div>
       <InboxBell />
 
       {favorites.length > 0 && (

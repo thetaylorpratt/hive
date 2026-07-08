@@ -1,6 +1,7 @@
 import {
   ArrowLeft,
   ArrowRight,
+  ChatCircle,
   DotsThree,
   MagnifyingGlass,
   Sidebar as SidebarIcon,
@@ -99,6 +100,8 @@ export function Header() {
   useAppStore((s) => s.page);
   const canBack = useAppStore((s) => s.canGoBack)();
   const canFwd = useAppStore((s) => s.canGoForward)();
+  const commentsOpen = useAppStore((s) => s.commentsOpen);
+  const toggleComments = useAppStore((s) => s.toggleComments);
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
@@ -136,6 +139,15 @@ export function Header() {
       >
         <MagnifyingGlass size={14} weight="bold" /> Search <kbd>⌘T</kbd>
       </button>
+      {pageId && (
+        <button
+          className={`hive-nav-btn${commentsOpen ? " active" : ""}`}
+          title="Comments"
+          onClick={toggleComments}
+        >
+          <ChatCircle size={17} weight="bold" />
+        </button>
+      )}
       {pageId && (
         <span style={{ position: "relative" }}>
           <button

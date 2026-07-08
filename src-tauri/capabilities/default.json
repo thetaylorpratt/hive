@@ -16,6 +16,9 @@
       "allow": [
         {
           "url": "https://api.notion.com/*"
+        },
+        {
+          "url": "https://mcp.notion.com/*"
         }
       ]
     },

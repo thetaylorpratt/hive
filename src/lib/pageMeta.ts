@@ -18,12 +18,29 @@ export function pageTitle(page: Record<string, unknown>): string {
 
 export function pageEmoji(page: Record<string, unknown>): string | null {
   const icon = page.icon as
-    | { type?: string; emoji?: string; external?: { url?: string }; file?: { url?: string } }
+    | {
+        type?: string;
+        emoji?: string;
+        external?: { url?: string };
+        file?: { url?: string };
+        icon?: { name?: string; color?: string; url?: string };
+        custom_emoji?: { url?: string };
+      }
     | null;
   if (icon?.type === "emoji" && icon.emoji) return icon.emoji;
   // custom/uploaded icons come through as URLs; <Glyph> renders them
   if (icon?.type === "external" && icon.external?.url) return icon.external.url;
   if (icon?.type === "file" && icon.file?.url) return icon.file.url;
+  // Notion's built-in tintable icon set has its own API shape
+  if (icon?.type === "icon") {
+    if (icon.icon?.url) return icon.icon.url;
+    if (icon.icon?.name && icon.icon?.color) {
+      return `https://www.notion.so/icons/${icon.icon.name}_${icon.icon.color}.svg`;
+    }
+  }
+  if (icon?.type === "custom_emoji" && icon.custom_emoji?.url) {
+    return icon.custom_emoji.url;
+  }
   return null;
 }
 

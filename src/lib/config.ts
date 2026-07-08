@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 export interface HiveConfig {
   notion_token: string | null;
   capture_page_id?: string | null;
+  scratchpad_page_id?: string | null;
 }
 
 export function loadConfig(): Promise<HiveConfig> {

@@ -9,6 +9,7 @@ import { Toast } from "./components/Toast";
 import { PropertiesHeader } from "./components/PropertiesHeader";
 import { PeekLayer } from "./components/PeekLayer";
 import { SplitPane } from "./components/SplitPane";
+import { CommentsPanel } from "./components/CommentsPanel";
 import { InboxPanel } from "./components/InboxPanel";
 import { CaptureModal } from "./components/CaptureModal";
 import { HomeScreen } from "./components/HomeScreen";
@@ -345,6 +346,7 @@ export default function App() {
   const init = useAppStore((s) => s.init);
   const sidebarVisible = useAppStore((s) => s.sidebarVisible);
   const split = useAppStore((s) => s.split);
+  const commentsOpen = useAppStore((s) => s.commentsOpen);
 
   useEffect(() => {
     void init();
@@ -359,6 +361,11 @@ export default function App() {
       const s = useAppStore.getState();
       let openedInHive = false;
       for (const raw of urls) {
+        if (raw.startsWith("hive://oauth/callback")) {
+          void s.completeMcpAuth(raw);
+          openedInHive = true;
+          continue;
+        }
         const url = decodeURIComponent(raw);
         const isHiveScheme = raw.startsWith("hive:");
         const isNotionLink = /https?:\/\/[^/]*notion\.(so|com)\//i.test(url);
@@ -414,6 +421,7 @@ export default function App() {
             <OutlineRail />
           </main>
           {split && <SplitPane />}
+          {commentsOpen && <CommentsPanel />}
         </div>
       </div>
       <CommandBar />

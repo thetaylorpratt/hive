@@ -20,6 +20,8 @@ import {
 import type { PageDiff } from "../lib/blockDiff";
 import type { Crumb } from "../lib/breadcrumbs";
 import * as org from "../lib/orgDb";
+import * as mcp from "../lib/notionMcp";
+import type { CommentThread } from "../lib/notionMcp";
 import * as writeback from "../lib/writeback";
 import type { Folder, SidebarItem, Space, Tier } from "../lib/orgDb";
 import type { PageData, RichTextItem } from "../lib/types";
@@ -231,6 +233,18 @@ interface AppState {
   setInboxOpen: (open: boolean) => void;
   setCaptureOpen: (open: boolean) => void;
   createComment: (text: string, quote: string) => Promise<void>;
+
+  // personal Notion identity (hosted MCP OAuth) + comments panel
+  mcpStatus: "disconnected" | "pending" | "connected";
+  commentsOpen: boolean;
+  commentThreads: CommentThread[] | null;
+  commentsLoading: boolean;
+  commentUsers: Record<string, string>;
+  connectPersonalNotion: () => Promise<void>;
+  completeMcpAuth: (url: string) => Promise<void>;
+  toggleComments: () => void;
+  loadComments: () => Promise<void>;
+  replyToThread: (discussionId: string, text: string) => Promise<void>;
   setDisplayPref: (key: "smallText" | "fullWidth", value: boolean) => void;
   movePageToSpace: (pageId: string, spaceId: string) => Promise<void>;
   createPage: (parentId: string | null) => Promise<void>;
@@ -275,6 +289,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   inboxOpen: false,
   captureOpen: false,
   displayPrefs: { smallText: false, fullWidth: false },
+  mcpStatus: "disconnected",
+  commentsOpen: false,
+  commentThreads: null,
+  commentsLoading: false,
+  commentUsers: {},
   searchView: null,
 
   init: async () => {
@@ -293,6 +312,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         if (n > 0) void get().refreshSidebar();
       });
       void get().refreshCurrentIfStale();
+    });
+
+    // Personal identity plane: hosted-MCP OAuth tokens, if present.
+    void mcp.mcpConnected().then((connected) => {
+      if (connected) set({ mcpStatus: "connected" });
     });
 
     // Content plane: Notion auth.
@@ -365,6 +389,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       focusBlockId: null,
       writeError: null,
       searchView: null,
+      commentThreads: null,
       breadcrumbs: [],
       displayPrefs: loadDisplayPrefs(pageId),
     });
@@ -970,10 +995,25 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       let parent = parentId;
       if (!parent || parent === DEMO_PAGE_ID) {
-        parent = (await loadConfig()).capture_page_id ?? null;
+        // Top-level "New page": the private scratchpad wins, then the
+        // capture page. Both must be shared with the integration so the
+        // created page is also readable back in Hive.
+        const config = await loadConfig();
+        parent = config.scratchpad_page_id ?? config.capture_page_id ?? null;
+      }
+      if (!parent && get().mcpStatus === "connected") {
+        // Last resort: create a parent-less page AS THE USER — it lands in
+        // their Private section, but the integration can't read it back, so
+        // Hive can only hand it off to Notion.
+        const id = await mcp.createPrivatePage("Untitled");
+        if (id) {
+          get().showToast("Created in your Private pages — share it with the integration to edit here");
+          void invoke("open_in_notion", { pageId: id }).catch(() => undefined);
+          return;
+        }
       }
       if (!parent) {
-        get().showToast("No parent page — set capturePageId or open a page first");
+        get().showToast("No parent page — set scratchpadPageId or capturePageId in config");
         return;
       }
       const created = (await enqueue(() =>
@@ -1030,10 +1070,31 @@ export const useAppStore = create<AppState>((set, get) => ({
    * quoted for context — teammates see it in Notion's page comments.
    */
   createComment: async (text: string, quote: string) => {
-    const { pageId, auth } = get();
+    const { pageId, auth, mcpStatus } = get();
     if (!pageId || pageId === DEMO_PAGE_ID || auth.status !== "ready") {
       get().showToast("Comments need a real page and a connected token");
       return;
+    }
+    // Preferred path: the user's own identity via hosted-MCP OAuth. Posts
+    // under their real name and — when there's a selection — anchors the
+    // comment inline, which the REST API cannot do at all.
+    if (mcpStatus === "connected") {
+      try {
+        await mcp.createCommentAsUser(pageId, text, {
+          quote: quote.trim() || undefined,
+        });
+        get().showToast(
+          quote.trim() ? "Comment anchored to your selection" : "Comment posted as you",
+        );
+        if (get().commentsOpen) void get().loadComments();
+        return;
+      } catch (err) {
+        get().showToast(
+          `Personal comment failed, falling back to bot: ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+      }
     }
     try {
       // The API always posts comments AS the integration bot — prefix the
@@ -1057,11 +1118,141 @@ export const useAppStore = create<AppState>((set, get) => ({
         }),
       );
       get().showToast("Comment posted to the page");
+      if (get().commentsOpen) void get().loadComments();
     } catch (err) {
       get().showToast(
         `Comment failed (does the integration have the comment capability?): ${
           err instanceof Error ? err.message : err
         }`,
+      );
+    }
+  },
+
+  connectPersonalNotion: async () => {
+    try {
+      set({ mcpStatus: "pending" });
+      await mcp.beginConnect();
+      get().showToast("Approve Hive in the browser window that just opened");
+    } catch (err) {
+      set({ mcpStatus: "disconnected" });
+      get().showToast(
+        `Couldn't start Notion sign-in: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  },
+
+  completeMcpAuth: async (url: string) => {
+    try {
+      await mcp.completeConnect(url);
+      set({ mcpStatus: "connected" });
+      get().showToast("Connected — comments now post as you");
+      if (get().commentsOpen) void get().loadComments();
+    } catch (err) {
+      set({ mcpStatus: "disconnected" });
+      get().showToast(
+        `Notion sign-in failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  },
+
+  toggleComments: () => {
+    const open = !get().commentsOpen;
+    set({ commentsOpen: open });
+    if (open) void get().loadComments();
+  },
+
+  loadComments: async () => {
+    const { pageId, auth, mcpStatus } = get();
+    if (!pageId || pageId === DEMO_PAGE_ID || auth.status !== "ready") {
+      set({ commentThreads: [] });
+      return;
+    }
+    set({ commentsLoading: true });
+    try {
+      let threads: CommentThread[];
+      if (mcpStatus === "connected") {
+        threads = await mcp.getCommentsAsUser(pageId);
+      } else {
+        // REST fallback: page-level comments only, grouped by discussion.
+        const resp = (await enqueue(() =>
+          notion().comments.list({ block_id: pageId, page_size: 100 }),
+        )) as { results: Record<string, unknown>[] };
+        const byDiscussion = new Map<string, CommentThread>();
+        for (const c of resp.results) {
+          const did = (c.discussion_id as string) ?? (c.id as string);
+          const entry = {
+            id: c.id as string,
+            authorId: ((c.created_by as { id?: string }) ?? {}).id ?? "",
+            time: (c.created_time as string) ?? "",
+            text: ((c.rich_text ?? []) as { plain_text: string }[])
+              .map((t) => t.plain_text)
+              .join(""),
+          };
+          const existing = byDiscussion.get(did);
+          if (existing) existing.comments.push(entry);
+          else
+            byDiscussion.set(did, {
+              id: did,
+              context: "page",
+              anchor: null,
+              resolved: false,
+              comments: [entry],
+            });
+        }
+        threads = [...byDiscussion.values()];
+      }
+      set({ commentThreads: threads, commentsLoading: false });
+      // Resolve author ids → names through the REST users API (cached).
+      const known = get().commentUsers;
+      const missing = [
+        ...new Set(
+          threads
+            .flatMap((t) => t.comments.map((c) => c.authorId))
+            .filter((id) => id && !known[id]),
+        ),
+      ];
+      for (const id of missing.slice(0, 20)) {
+        try {
+          const u = (await enqueue(() =>
+            notion().users.retrieve({ user_id: id }),
+          )) as { name?: string };
+          if (u.name) {
+            set({ commentUsers: { ...get().commentUsers, [id]: u.name } });
+          }
+        } catch {
+          /* guests or removed users can 404 — leave the id short-form */
+        }
+      }
+    } catch (err) {
+      set({ commentsLoading: false, commentThreads: [] });
+      get().showToast(
+        `Couldn't load comments: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  },
+
+  replyToThread: async (discussionId: string, text: string) => {
+    const { pageId, mcpStatus } = get();
+    if (!pageId) return;
+    try {
+      if (mcpStatus === "connected") {
+        await mcp.createCommentAsUser(pageId, text, { discussionId });
+      } else {
+        const who = get().auth.userName;
+        const rich: unknown[] = [];
+        if (who) rich.push({ text: { content: `${who}: ` }, annotations: { bold: true } });
+        rich.push({ text: { content: text } });
+        // REST replies want the bare discussion uuid, not the discussion:// URL
+        const bare = discussionId.split("/").pop() ?? discussionId;
+        await enqueue(() =>
+          notion().comments.create({ discussion_id: bare, rich_text: rich as never }),
+        );
+      }
+      get().showToast("Reply posted");
+      void get().loadComments();
+    } catch (err) {
+      get().showToast(
+        `Reply failed: ${err instanceof Error ? err.message : err}`,
       );
     }
   },

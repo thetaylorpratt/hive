@@ -6,6 +6,7 @@ use tauri_plugin_sql::{Migration, MigrationKind};
 struct HiveConfig {
     notion_token: Option<String>,
     capture_page_id: Option<String>,
+    scratchpad_page_id: Option<String>,
 }
 
 #[tauri::command]
@@ -29,9 +30,14 @@ fn get_config() -> HiveConfig {
         .get("capturePageId")
         .and_then(|v| v.as_str())
         .map(str::to_owned);
+    let scratchpad = json
+        .get("scratchpadPageId")
+        .and_then(|v| v.as_str())
+        .map(str::to_owned);
     HiveConfig {
         notion_token: token,
         capture_page_id: capture,
+        scratchpad_page_id: scratchpad,
     }
 }
 
@@ -95,6 +101,37 @@ fn open_in_notion(page_id: String) -> Result<(), String> {
         .spawn()
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// OAuth tokens for Notion's hosted MCP (personal identity). Stored beside
+/// the API token in ~/.hive — chmod 600, never in the repo or logs.
+fn mcp_auth_path() -> Option<std::path::PathBuf> {
+    std::env::var_os("HOME")
+        .map(|h| std::path::Path::new(&h).join(".hive").join("mcp_auth.json"))
+}
+
+#[tauri::command]
+fn save_mcp_auth(json: String) -> Result<(), String> {
+    let path = mcp_auth_path().ok_or("no HOME")?;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    if json.is_empty() {
+        let _ = std::fs::remove_file(&path);
+        return Ok(());
+    }
+    std::fs::write(&path, json).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn load_mcp_auth() -> Option<String> {
+    std::fs::read_to_string(mcp_auth_path()?).ok()
 }
 
 /// Unread-count badge on the macOS dock icon (Notifications Tier A).
@@ -223,7 +260,9 @@ pub fn run() {
             open_embed,
             set_badge,
             forward_url,
-            open_in_notion
+            open_in_notion,
+            save_mcp_auth,
+            load_mcp_auth
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

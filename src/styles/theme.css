@@ -1866,6 +1866,156 @@ tr:hover .hive-row-gutter {
   font-size: 1.1rem;
 }
 
+/* Comments panel */
+.hive-comments {
+  width: 300px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--hive-color-border-subtle);
+  background: var(--hive-color-bg-surface);
+  overflow: hidden;
+}
+.hive-comments .head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 12px 14px 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--hive-color-fg-primary);
+  border-bottom: 1px solid var(--hive-color-border-subtle);
+}
+.hive-comments .head .count {
+  background: var(--hive-color-bg-subtle);
+  color: var(--hive-color-fg-secondary);
+  border-radius: 999px;
+  padding: 0 8px;
+  font-size: 0.72rem;
+}
+.hive-comments .threads {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.hive-comments .empty {
+  padding: 14px;
+  color: var(--hive-color-fg-muted);
+  font-size: 0.82rem;
+}
+.hive-comment-thread {
+  border: 1px solid var(--hive-color-border-subtle);
+  border-radius: var(--hive-radius);
+  padding: 9px 10px;
+  background: var(--hive-color-bg-base);
+}
+.hive-comment-thread .anchor {
+  border-left: 2px solid var(--hive-color-warning-fg);
+  padding: 1px 0 1px 8px;
+  margin-bottom: 7px;
+  color: var(--hive-color-fg-secondary);
+  font-size: 0.75rem;
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hive-comment-thread .comment {
+  margin-bottom: 8px;
+}
+.hive-comment-thread .comment .who {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--hive-color-fg-primary);
+}
+.hive-comment-thread .comment .when {
+  color: var(--hive-color-fg-muted);
+  font-weight: 400;
+}
+.hive-comment-thread .comment .text {
+  font-size: 0.82rem;
+  color: var(--hive-color-fg-primary);
+  margin: 2px 0 0 20px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.hive-comment-thread .reply-link {
+  border: none;
+  background: none;
+  color: var(--hive-color-fg-muted);
+  font-size: 0.76rem;
+  cursor: pointer;
+  padding: 0;
+}
+.hive-comment-thread .reply-link:hover {
+  color: var(--hive-color-accent);
+}
+.hive-comment-thread .reply-row,
+.hive-comments .composer {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.hive-comments .composer {
+  padding: 10px 12px;
+  border-top: 1px solid var(--hive-color-border-subtle);
+}
+.hive-comments .composer .hive-input,
+.hive-comment-thread .reply-row .hive-input {
+  flex: 1;
+  font-size: 0.82rem;
+}
+.hive-comments .identity {
+  padding: 9px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 0.74rem;
+  border-top: 1px solid var(--hive-color-border-subtle);
+}
+.hive-comments .identity .as-you {
+  color: var(--hive-color-success-fg);
+  font-weight: 500;
+}
+.hive-comments .identity .as-bot {
+  color: var(--hive-color-fg-muted);
+}
+
+/* Sidebar top row: space name + new page */
+.hive-side-toprow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.hive-side-toprow .hive-space-name {
+  flex: 1;
+  min-width: 0;
+}
+.hive-newpage-btn {
+  border: none;
+  background: none;
+  color: var(--hive-color-fg-muted);
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: var(--hive-radius-sm);
+  display: inline-flex;
+}
+.hive-newpage-btn:hover {
+  background: var(--hive-color-bg-subtle);
+  color: var(--hive-color-fg-primary);
+}
+
+.hive-nav-btn.active {
+  color: var(--hive-color-accent);
+  background: var(--hive-color-bg-subtle);
+}
+
 .hive-nav-btn {
   border: none;
   background: none;
