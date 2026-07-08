@@ -1,6 +1,7 @@
 import { useAppStore } from "../store/appStore";
 import { BlockList, ReadOnlyContext } from "./BlockRenderer";
 import { pageEmoji, pageTitle } from "../lib/pageMeta";
+import { Glyph } from "../lib/iconSets";
 
 /**
  * Right split pane (Phase 4): a read-only companion view — runbook beside
@@ -26,7 +27,9 @@ export function SplitPane() {
           {data ? (
             <>
               {pageEmoji(data.page) && (
-                <span style={{ marginRight: "0.3em" }}>{pageEmoji(data.page)}</span>
+                <span style={{ marginRight: "0.3em" }}>
+                  <Glyph icon={pageEmoji(data.page)} />
+                </span>
               )}
               {pageTitle(data.page)}
             </>

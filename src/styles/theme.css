@@ -1789,6 +1789,60 @@ tr:hover .hive-row-gutter {
   font-size: 0.8rem;
   padding: 8px;
 }
+.hive-emoji-picker .tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--hive-color-border-subtle);
+}
+.hive-emoji-picker .tabs button {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--hive-color-fg-secondary);
+  padding: 4px 10px 6px;
+  border-radius: var(--hive-radius-sm) var(--hive-radius-sm) 0 0;
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+}
+.hive-emoji-picker .tabs button.active {
+  color: var(--hive-color-fg-primary);
+  border-bottom-color: var(--hive-color-accent);
+}
+.hive-emoji-picker .tabs button:hover {
+  background: var(--hive-color-bg-subtle);
+}
+.hive-emoji-picker .colors {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 6px;
+  padding: 2px;
+}
+.hive-emoji-picker .colors .dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+}
+.hive-emoji-picker .colors .dot.active {
+  border-color: var(--hive-color-accent);
+  box-shadow: 0 0 0 1.5px var(--hive-color-bg-surface) inset;
+}
+.hive-emoji-picker .grid button svg {
+  display: block;
+  margin: 0 auto;
+  color: var(--hive-color-fg-secondary);
+}
+.hive-emoji-picker .grid button img {
+  display: block;
+  margin: 0 auto;
+  width: 20px;
+  height: 20px;
+}
 .hive-page-icon-popover {
   position: absolute;
   top: calc(100% + 6px);

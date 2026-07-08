@@ -8,6 +8,7 @@ import {
   ArrowRight,
 } from "@phosphor-icons/react";
 import { useAppStore } from "../store/appStore";
+import { Glyph } from "../lib/iconSets";
 import { topRecents } from "../lib/frecencyDb";
 import type { FrecencyEntry } from "../lib/frecencyDb";
 
@@ -101,7 +102,9 @@ export function HomeScreen() {
               className="recent"
               onClick={() => void openPage(r.notionPageId)}
             >
-              <span className="icon">{r.iconCache ?? <FileText size={15} />}</span>
+              <span className="icon">
+                {r.iconCache ? <Glyph icon={r.iconCache} size={15} /> : <FileText size={15} />}
+              </span>
               <span className="title">{r.titleCache}</span>
               <ArrowRight size={13} className="go" />
             </button>

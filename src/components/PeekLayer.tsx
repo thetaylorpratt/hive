@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useAppStore } from "../store/appStore";
 import { loadCached } from "../lib/fetchPage";
 import { pageEmoji, pageTitle } from "../lib/pageMeta";
+import { Glyph } from "../lib/iconSets";
 import { BlockList } from "./BlockRenderer";
 import type { PageData } from "../lib/types";
 
@@ -80,7 +81,9 @@ export function PeekLayer() {
         <>
           <div className="hive-peek-title">
             {pageEmoji(data.page) && (
-              <span style={{ marginRight: "0.3em" }}>{pageEmoji(data.page)}</span>
+              <span style={{ marginRight: "0.3em" }}>
+                <Glyph icon={pageEmoji(data.page)} />
+              </span>
             )}
             {pageTitle(data.page)}
           </div>

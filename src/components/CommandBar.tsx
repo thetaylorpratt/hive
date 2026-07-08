@@ -3,6 +3,7 @@ import { useAppStore } from "../store/appStore";
 import { notion } from "../lib/notionClient";
 import { enqueue } from "../lib/queue";
 import { pageEmoji, pageTitle } from "../lib/pageMeta";
+import { Glyph } from "../lib/iconSets";
 import { topRecents } from "../lib/frecencyDb";
 import { normalizePageId } from "../lib/fetchPage";
 import { searchCachedPages } from "../lib/db";
@@ -441,7 +442,7 @@ export function CommandBar() {
               onMouseEnter={() => setSelected(i)}
               onClick={() => pick(r)}
             >
-              <span className="icon">{r.icon ?? "📄"}</span>
+              <span className="icon">{r.icon ? <Glyph icon={r.icon} /> : "📄"}</span>
               <span className="title">
                 {r.title}
                 {r.subtitle && <span className="subtitle"> — {r.subtitle}</span>}

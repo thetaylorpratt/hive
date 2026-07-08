@@ -321,18 +321,21 @@ function freshTableRows(): HiveBlock[] {
   }));
 }
 
-/** Update a page's emoji icon (or clear it with null). */
+/** Update a page's icon — an emoji, or a URL (Notion custom icons) sent as
+ * an external icon so native Notion renders it too — or clear with null. */
 export async function updatePageIcon(
   pageId: string,
   page: Record<string, unknown>,
   blocks: HiveBlock[],
-  emoji: string | null,
+  value: string | null,
   sink: WriteSink,
 ): Promise<{ page: Record<string, unknown>; remote: Promise<void> }> {
-  const nextPage = {
-    ...page,
-    icon: emoji ? { type: "emoji", emoji } : null,
-  };
+  const iconPayload = value
+    ? value.startsWith("http")
+      ? { type: "external", external: { url: value } }
+      : { type: "emoji", emoji: value }
+    : null;
+  const nextPage = { ...page, icon: iconPayload };
   try {
     const { upsertPageCache } = await import("./db");
     await upsertPageCache(pageId, nextPage, blocks);
@@ -344,7 +347,7 @@ export async function updatePageIcon(
       ? enqueue(() =>
           notion().pages.update({
             page_id: pageId,
-            icon: emoji ? { type: "emoji", emoji } : null,
+            icon: iconPayload,
           } as never),
         ).then(() => undefined)
       : Promise.resolve();

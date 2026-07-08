@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAppStore } from "../store/appStore";
+import { Glyph } from "../lib/iconSets";
 
 /**
  * Arc-style Ctrl+Tab MRU switcher: hold Ctrl, tap Tab to cycle the most
@@ -57,7 +58,7 @@ export function MruSwitcher() {
             key={entry.pageId}
             className={`hive-mru-card${i === index ? " selected" : ""}`}
           >
-            <span className="icon">{entry.icon ?? "📄"}</span>
+            <span className="icon">{entry.icon ? <Glyph icon={entry.icon} /> : "📄"}</span>
             <span className="title">{entry.title}</span>
           </div>
         ))}

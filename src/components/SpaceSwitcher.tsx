@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAppStore } from "../store/appStore";
 import { EmojiPicker } from "./EmojiPicker";
+import { Glyph } from "../lib/iconSets";
 import { SPACE_ACCENTS } from "../lib/orgDb";
 import type { Space } from "../lib/orgDb";
 
@@ -43,7 +44,7 @@ function SpaceEditor({ space, onClose }: { space: Space; onClose: () => void }) 
           title="Space icon"
           onClick={() => setPickerOpen(!pickerOpen)}
         >
-          {icon || "🐝"}
+          {icon ? <Glyph icon={icon} size={17} /> : "🐝"}
         </button>
         <input
           className="hive-input flex-1"
@@ -62,6 +63,7 @@ function SpaceEditor({ space, onClose }: { space: Space; onClose: () => void }) 
       </div>
       {pickerOpen && (
         <EmojiPicker
+          iconSet="phosphor"
           onPick={(char) => {
             setIcon(char);
             setPickerOpen(false);
@@ -121,7 +123,11 @@ export function SpaceSwitcher() {
                 setEditingId(space.id);
               }}
             >
-              {space.icon ?? space.name.slice(0, 1).toUpperCase()}
+              {space.icon ? (
+                <Glyph icon={space.icon} size={15} />
+              ) : (
+                space.name.slice(0, 1).toUpperCase()
+              )}
             </button>
             {(unreadBySpace[space.id] ?? 0) > 0 && (
               <span className="hive-space-badge">

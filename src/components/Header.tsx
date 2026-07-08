@@ -9,6 +9,7 @@ import { useState } from "react";
 import { PageMenu } from "./PageMenu";
 import { useAppStore } from "../store/appStore";
 import { pageTitle } from "../lib/pageMeta";
+import { Glyph } from "../lib/iconSets";
 
 /**
  * Header v2 (post-ADR-001): breadcrumb navigation instead of the Phase-1
@@ -70,7 +71,11 @@ function Breadcrumbs() {
             title={c.isDatabase ? `${c.title} (database — open in Notion)` : c.title}
             onClick={() => !c.isDatabase && void openPage(c.pageId)}
           >
-            {c.icon && <span className="ci">{c.icon}</span>}
+            {c.icon && (
+              <span className="ci">
+                <Glyph icon={c.icon} size={13} />
+              </span>
+            )}
             {c.title}
           </button>
           <span className="sep">/</span>

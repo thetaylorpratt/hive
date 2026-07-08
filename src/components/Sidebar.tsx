@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { Bell } from "@phosphor-icons/react";
+import { Glyph } from "../lib/iconSets";
 import { useAppStore } from "../store/appStore";
 import { SpaceSwitcher } from "./SpaceSwitcher";
 import type { SidebarItem, Tier } from "../lib/orgDb";
@@ -46,7 +47,7 @@ function ItemRow({ item }: { item: SidebarItem }) {
       onMouseLeave={releasePeek}
       title={item.titleCache}
     >
-      <span className="icon">{item.iconCache ?? "📄"}</span>
+      <span className="icon">{item.iconCache ? <Glyph icon={item.iconCache} /> : "📄"}</span>
       <span className="title">{item.titleCache}</span>
       {unread && <span className="hive-unread-dot" title="Changed since you last opened it" />}
       <span className="actions" onClick={(e) => e.stopPropagation()}>
@@ -258,7 +259,11 @@ function SpaceName() {
         setEditing(true);
       }}
     >
-      {space.icon && <span style={{ marginRight: "0.4em" }}>{space.icon}</span>}
+      {space.icon && (
+        <span style={{ marginRight: "0.4em" }}>
+          <Glyph icon={space.icon} size={14} />
+        </span>
+      )}
       {space.name}
     </div>
   );
@@ -368,7 +373,11 @@ export function Sidebar() {
               title={f.titleCache}
               onClick={() => void openPage(f.notionPageId)}
             >
-              {f.iconCache ?? f.titleCache.slice(0, 1).toUpperCase()}
+              {f.iconCache ? (
+                <Glyph icon={f.iconCache} size={15} />
+              ) : (
+                f.titleCache.slice(0, 1).toUpperCase()
+              )}
             </button>
           ))}
         </div>

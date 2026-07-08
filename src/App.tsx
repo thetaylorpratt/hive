@@ -17,6 +17,7 @@ import { OutlineRail } from "./components/OutlineRail";
 import { ShortcutSheet } from "./components/ShortcutSheet";
 import { installKeymap } from "./lib/keymap";
 import { blocksToPlainText, pageEmoji, pageTitle } from "./lib/pageMeta";
+import { Glyph } from "./lib/iconSets";
 import { normalizePageId } from "./lib/fetchPage";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -76,11 +77,12 @@ function PageIcon({ emoji }: { emoji: string | null }) {
         title={canEdit ? "Click to change icon" : undefined}
         onClick={() => canEdit && setPicking(!picking)}
       >
-        {emoji ?? <span className="add-hint">☺︎</span>}
+        {emoji ? <Glyph icon={emoji} size={34} /> : <span className="add-hint">☺︎</span>}
       </span>
       {picking && (
         <span className="hive-page-icon-popover">
           <EmojiPicker
+            iconSet="notion"
             onPick={(char) => {
               setPicking(false);
               void updatePageIcon(char);
@@ -129,7 +131,7 @@ function SearchResults() {
           className="hive-search-row"
           onClick={() => void openPage(r.pageId)}
         >
-          <span className="icon">{r.icon ?? "📄"}</span>
+          <span className="icon">{r.icon ? <Glyph icon={r.icon} /> : "📄"}</span>
           <span className="body">
             <span className="title">{r.title}</span>
             {r.snippet && <span className="snippet">{r.snippet}</span>}

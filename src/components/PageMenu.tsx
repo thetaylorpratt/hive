@@ -73,7 +73,10 @@ export function PageMenu({ onClose }: { onClose: () => void }) {
         .filter((sp) => sp.id !== activeSpaceId)
         .slice(0, 4)
         .map((sp) =>
-          item(`Move to ${sp.icon ?? ""} ${sp.name}`, () => {
+          // ph:/URL icons can't interpolate into a text label — emoji only
+          item(
+            `Move to ${sp.icon && !sp.icon.startsWith("ph:") && !sp.icon.startsWith("http") ? `${sp.icon} ` : ""}${sp.name}`,
+            () => {
             void store.getState().movePageToSpace(pageId, sp.id);
           }),
         )}

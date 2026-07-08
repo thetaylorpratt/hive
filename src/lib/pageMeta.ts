@@ -17,8 +17,14 @@ export function pageTitle(page: Record<string, unknown>): string {
 }
 
 export function pageEmoji(page: Record<string, unknown>): string | null {
-  const icon = page.icon as { type?: string; emoji?: string } | null;
-  return icon?.type === "emoji" && icon.emoji ? icon.emoji : null;
+  const icon = page.icon as
+    | { type?: string; emoji?: string; external?: { url?: string }; file?: { url?: string } }
+    | null;
+  if (icon?.type === "emoji" && icon.emoji) return icon.emoji;
+  // custom/uploaded icons come through as URLs; <Glyph> renders them
+  if (icon?.type === "external" && icon.external?.url) return icon.external.url;
+  if (icon?.type === "file" && icon.file?.url) return icon.file.url;
+  return null;
 }
 
 /** Flatten a block tree to plain text (FTS indexing, word counts). */
