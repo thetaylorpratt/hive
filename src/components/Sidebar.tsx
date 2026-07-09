@@ -600,7 +600,6 @@ export function Sidebar() {
   const folders = useAppStore((s) => s.folders);
   const createFolder = useAppStore((s) => s.createFolder);
   const createPage = useAppStore((s) => s.createPage);
-  const openPage = useAppStore((s) => s.openPage);
   const spaces = useAppStore((s) => s.spaces);
   const activeSpaceId = useAppStore((s) => s.activeSpaceId);
   const onWheel = useSwipeToSwitch();
