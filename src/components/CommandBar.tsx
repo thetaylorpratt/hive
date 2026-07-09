@@ -102,6 +102,7 @@ function useActions(): Result[] {
     )),
     action("New Space", "✨", () => void store.getState().createSpace()),
     action("New folder", "📁", () => void store.getState().createFolder()),
+    action("Open demo / test page", "🧪", () => void store.getState().openDemo()),
     action("Toggle sidebar", "◧", () => store.getState().toggleSidebar(), "⌘\\"),
     action("Focus mode", "🎯", () => store.getState().toggleFocusMode(), "⌘⇧F"),
     action("Theme: light", "☀️", () => void import("../lib/theme").then((m) => m.setThemePref("light"))),
