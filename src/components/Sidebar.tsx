@@ -1,9 +1,11 @@
-import { useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import { ArrowClockwise, Bell, PencilSimpleLine } from "@phosphor-icons/react";
 import { Glyph } from "../lib/iconSets";
 import { useAppStore } from "../store/appStore";
 import { SpaceSwitcher } from "./SpaceSwitcher";
 import type { SidebarItem, Tier } from "../lib/orgDb";
+import { subscribeReminders, dueReminders } from "../lib/reminders";
 
 /**
  * Per-Space sidebar: Favorites (icon row, transcend Spaces), Pinned,
@@ -16,6 +18,168 @@ import type { SidebarItem, Tier } from "../lib/orgDb";
 
 const DRAG_MIME = "application/x-hive-item";
 
+// WebKit (the real Tauri WKWebView) has been observed to refuse drags that
+// carry only a custom MIME type — the drop's dataTransfer comes back empty
+// even though dragstart set it. Always also carry a "text/plain" fallback
+// and accept either form everywhere we read/check the payload.
+function hasDragPayload(e: React.DragEvent): boolean {
+  return (
+    e.dataTransfer.types.includes(DRAG_MIME) ||
+    e.dataTransfer.types.includes("text/plain")
+  );
+}
+function getDraggedItemId(e: React.DragEvent): string {
+  return e.dataTransfer.getData(DRAG_MIME) || e.dataTransfer.getData("text/plain");
+}
+
+// Suppress the hover-peek while a native HTML5 drag is in flight — mouseenter
+// on rows the drag passes over would otherwise race the drop, opening peek
+// panels mid-drag. Module-level because dragstart/dragend on one row must be
+// visible to onMouseEnter on every other row.
+let isDragging = false;
+
+/** Right-click menu for a sidebar row: move Space/folder, pin/star toggles,
+ * remove. Portals to <body> — WebKit clips absolutely-positioned
+ * descendants of scrolling/overflow-hidden ancestors (see Popover in
+ * DatabaseView.tsx), and a fixed-position menu at raw mouse coords needs the
+ * same escape hatch. Self-contained per-row: no lifted state needed, since
+ * only one row's contextmenu event can fire at a time and the click-away
+ * listener on any previously-open menu closes it on the new event's mousedown. */
+function ItemContextMenu({
+  item,
+  point,
+  onClose,
+}: {
+  item: SidebarItem;
+  point: { x: number; y: number };
+  onClose: () => void;
+}) {
+  const spaces = useAppStore((s) => s.spaces);
+  const activeSpaceId = useAppStore((s) => s.activeSpaceId);
+  const folders = useAppStore((s) => s.folders);
+  const setItemTier = useAppStore((s) => s.setItemTier);
+  const moveItemToSpace = useAppStore((s) => s.moveItemToSpace);
+  const fileItemIntoFolder = useAppStore((s) => s.fileItemIntoFolder);
+  const createFolder = useAppStore((s) => s.createFolder);
+  const removeItem = useAppStore((s) => s.removeItem);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const el = menuRef.current;
+    if (!el) return;
+    const { width, height } = el.getBoundingClientRect();
+    const left = Math.max(8, Math.min(point.x, window.innerWidth - width - 8));
+    const top = Math.max(8, Math.min(point.y, window.innerHeight - height - 8));
+    setPos({ top, left });
+  }, [point]);
+
+  useEffect(() => {
+    const away = (e: MouseEvent) => {
+      if (menuRef.current?.contains(e.target as Node)) return;
+      onClose();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("mousedown", away, true);
+    window.addEventListener("scroll", onClose, true);
+    window.addEventListener("resize", onClose);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", away, true);
+      window.removeEventListener("scroll", onClose, true);
+      window.removeEventListener("resize", onClose);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+
+  const otherSpaces = spaces.filter((s) => s.id !== activeSpaceId);
+
+  const runAndClose = (fn: () => Promise<unknown>) => {
+    onClose();
+    void fn();
+  };
+
+  return createPortal(
+    <div
+      ref={menuRef}
+      className="hive-ctx-menu"
+      style={{
+        position: "fixed",
+        top: pos?.top ?? point.y,
+        left: pos?.left ?? point.x,
+        visibility: pos ? "visible" : "hidden",
+      }}
+    >
+      {otherSpaces.length > 0 && (
+        <>
+          {otherSpaces.map((space) => (
+            <button
+              key={space.id}
+              className="row"
+              onClick={() => runAndClose(() => moveItemToSpace(item.id, space.id))}
+            >
+              <span className={`hive-ctx-dot accent-${space.color}`} />
+              Move to {space.name}
+            </button>
+          ))}
+          <div className="sep" />
+        </>
+      )}
+
+      {folders.map((folder) => (
+        <button
+          key={folder.id}
+          className="row"
+          onClick={() => runAndClose(() => fileItemIntoFolder(item.id, folder.id))}
+        >
+          Add to {folder.name}
+        </button>
+      ))}
+      <button
+        className="row create"
+        onClick={() =>
+          runAndClose(async () => {
+            await createFolder();
+            const created = useAppStore.getState().folders;
+            const newest = created[created.length - 1];
+            if (newest) await fileItemIntoFolder(item.id, newest.id);
+          })
+        }
+      >
+        New folder…
+      </button>
+      <div className="sep" />
+
+      {item.tier === "today" && (
+        <button className="row" onClick={() => runAndClose(() => setItemTier(item.id, "pinned"))}>
+          Pin
+        </button>
+      )}
+      {item.tier === "pinned" && (
+        <button className="row" onClick={() => runAndClose(() => setItemTier(item.id, "today"))}>
+          Unpin
+        </button>
+      )}
+      {item.tier !== "favorite" ? (
+        <button className="row" onClick={() => runAndClose(() => setItemTier(item.id, "favorite"))}>
+          Star
+        </button>
+      ) : (
+        <button className="row" onClick={() => runAndClose(() => setItemTier(item.id, "pinned"))}>
+          Unstar
+        </button>
+      )}
+      <div className="sep" />
+      <button className="row danger" onClick={() => runAndClose(() => removeItem(item.id))}>
+        Remove from sidebar
+      </button>
+    </div>,
+    document.body,
+  );
+}
+
 function ItemRow({ item }: { item: SidebarItem }) {
   const openPage = useAppStore((s) => s.openPage);
   const setItemTier = useAppStore((s) => s.setItemTier);
@@ -26,6 +190,7 @@ function ItemRow({ item }: { item: SidebarItem }) {
   const releasePeek = useAppStore((s) => s.releasePeek);
   const closePeek = useAppStore((s) => s.closePeek);
   const active = currentPageId === item.notionPageId;
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
 
   return (
     <div
@@ -33,16 +198,29 @@ function ItemRow({ item }: { item: SidebarItem }) {
       draggable
       onDragStart={(e) => {
         closePeek();
+        isDragging = true;
         e.dataTransfer.setData(DRAG_MIME, item.id);
+        // WebKit fallback: drags carrying only a custom MIME have been
+        // observed to arrive at the drop target with an empty dataTransfer.
+        e.dataTransfer.setData("text/plain", item.id);
         e.dataTransfer.effectAllowed = "move";
+      }}
+      onDragEnd={() => {
+        isDragging = false;
       }}
       onClick={() => {
         closePeek();
         void openPage(item.notionPageId);
       }}
-      onMouseEnter={(e) =>
-        requestPeek(item.notionPageId, e.currentTarget.getBoundingClientRect().top)
-      }
+      onContextMenu={(e) => {
+        e.preventDefault();
+        closePeek();
+        setMenu({ x: e.clientX, y: e.clientY });
+      }}
+      onMouseEnter={(e) => {
+        if (isDragging) return;
+        requestPeek(item.notionPageId, e.currentTarget.getBoundingClientRect().top);
+      }}
       onMouseLeave={releasePeek}
       title={item.titleCache}
     >
@@ -72,6 +250,7 @@ function ItemRow({ item }: { item: SidebarItem }) {
           ×
         </button>
       </span>
+      {menu && <ItemContextMenu item={item} point={menu} onClose={() => setMenu(null)} />}
     </div>
   );
 }
@@ -94,9 +273,10 @@ function TierList({
   const listRef = useRef<HTMLDivElement>(null);
 
   const onDrop = (e: React.DragEvent) => {
+    if (!hasDragPayload(e)) return;
     e.preventDefault();
     setOverIndex(null);
-    const draggedId = e.dataTransfer.getData(DRAG_MIME);
+    const draggedId = getDraggedItemId(e);
     if (!draggedId) return;
     const dragged = sidebarItems.find((i) => i.id === draggedId);
     if (!dragged) return;
@@ -120,8 +300,12 @@ function TierList({
     <div
       ref={listRef}
       className="hive-tier-list"
+      onDragEnter={(e) => {
+        if (!hasDragPayload(e)) return;
+        e.preventDefault();
+      }}
       onDragOver={(e) => {
-        if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
+        if (!hasDragPayload(e)) return;
         e.preventDefault();
         const rows = Array.from(
           listRef.current?.querySelectorAll(".hive-side-row") ?? [],
@@ -168,29 +352,47 @@ function FolderBlock({
   const renameFolder = useAppStore((s) => s.renameFolder);
 
   return (
-    <div className={`hive-folder${dropping ? " dropping" : ""}`}>
-      <div
-        className="hive-folder-head"
-        onClick={() => setOpen(!open)}
-        onDragOver={(e) => {
-          if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
-          e.preventDefault();
-          setDropping(true);
-        }}
-        onDragLeave={() => setDropping(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setDropping(false);
-          const draggedId = e.dataTransfer.getData(DRAG_MIME);
-          const dragged = sidebarItems.find((i) => i.id === draggedId);
-          if (!dragged) return;
-          void (async () => {
-            // Folders live in the pinned section; filing implies pinning.
-            if (dragged.tier !== "pinned") await setItemTier(draggedId, "pinned");
-            await moveItemToFolder(draggedId, folderId);
-          })();
-        }}
-      >
+    <div
+      className={`hive-folder${dropping ? " dropping" : ""}`}
+      onDragEnter={(e) => {
+        if (!hasDragPayload(e)) return;
+        e.preventDefault();
+      }}
+      onDragOver={(e) => {
+        // The ONLY drop target used to be the head title row — dropping
+        // anywhere else on the folder (open body, empty-state hint, or a
+        // row already inside it) silently no-op'd. The whole block is now
+        // the drop target so a drop lands wherever the user releases it.
+        if (!hasDragPayload(e)) return;
+        e.preventDefault();
+        setDropping(true);
+      }}
+      onDragLeave={(e) => {
+        // Moving between children (head <-> body <-> a row) fires
+        // dragleave/dragenter pairs on the block itself too — only clear
+        // the highlight once the pointer has actually left the block.
+        const next = e.relatedTarget as Node | null;
+        if (next && e.currentTarget.contains(next)) return;
+        setDropping(false);
+      }}
+      onDrop={(e) => {
+        if (!hasDragPayload(e)) return;
+        e.preventDefault();
+        // Nothing else should double-handle this drop (e.g. a TierList
+        // wrapping this block, or a bubbling drop on document).
+        e.stopPropagation();
+        setDropping(false);
+        const draggedId = getDraggedItemId(e);
+        const dragged = sidebarItems.find((i) => i.id === draggedId);
+        if (!dragged) return;
+        void (async () => {
+          // Folders live in the pinned section; filing implies pinning.
+          if (dragged.tier !== "pinned") await setItemTier(draggedId, "pinned");
+          await moveItemToFolder(draggedId, folderId);
+        })();
+      }}
+    >
+      <div className="hive-folder-head" onClick={() => setOpen(!open)}>
         <span className="chevron">{open ? "▾" : "▸"}</span>
         {renaming ? (
           <input
@@ -316,13 +518,19 @@ function useSwipeToSwitch() {
 }
 
 function InboxBell() {
-  const count = useAppStore((s) => s.inbox.length);
+  const inboxCount = useAppStore((s) => s.inbox.length);
+  const dueCount = useSyncExternalStore(
+    subscribeReminders,
+    () => dueReminders().length,
+    () => 0,
+  );
+  const count = inboxCount + dueCount;
   const setInboxOpen = useAppStore((s) => s.setInboxOpen);
   return (
     <button
       className="hive-newpage-btn hive-inbox-iconbtn"
       onClick={() => setInboxOpen(true)}
-      title={`Comments & mentions inbox${count > 0 ? ` (${count})` : ""}`}
+      title={`Comments, mentions & review reminders${count > 0 ? ` (${count})` : ""}`}
     >
       <Bell size={15} weight={count > 0 ? "fill" : "bold"} />
       {count > 0 && <span className="hive-space-badge">{count}</span>}

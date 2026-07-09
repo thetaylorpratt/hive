@@ -1,9 +1,12 @@
 import { useEffect, useRef } from "react";
 import { useAppStore } from "../store/appStore";
-import { blocksToPlainText, pageTitle } from "../lib/pageMeta";
+import { blocksToPlainText, pageEmoji, pageTitle } from "../lib/pageMeta";
 import { pageToMarkdown } from "../lib/markdownExport";
 import { DEMO_PAGE_ID } from "../lib/demoPage";
+import { getReminderFor, setReminder, type ReminderFreq } from "../lib/reminders";
 import type { HiveBlock } from "../lib/types";
+
+const REMINDER_FREQS: ReminderFreq[] = ["daily", "weekly", "monthly"];
 
 /** The ⋯ page-options menu (Notion parity, API-possible subset). */
 export function PageMenu({ onClose }: { onClose: () => void }) {
@@ -15,6 +18,7 @@ export function PageMenu({ onClose }: { onClose: () => void }) {
   const activeSpaceId = useAppStore((s) => s.activeSpaceId);
   const folders = useAppStore((s) => s.folders);
   const realPage = pageId !== DEMO_PAGE_ID;
+  const currentReminder = getReminderFor(pageId);
 
   useEffect(() => {
     const away = (e: MouseEvent) => {
@@ -102,6 +106,38 @@ export function PageMenu({ onClose }: { onClose: () => void }) {
       {realPage &&
         item("Move to another page…", () => store.getState().setMovePageOpen(true))}
       {item("New sub-page", () => void store.getState().createPage(pageId))}
+      <div className="sep" />
+      {realPage && (
+        <>
+          <div
+            style={{
+              padding: "6px 10px 2px",
+              fontSize: "0.72rem",
+              fontWeight: 600,
+              color: "var(--hive-color-fg-muted)",
+            }}
+          >
+            ⏰ Review reminder
+          </div>
+          {REMINDER_FREQS.map((freq) =>
+            item(
+              `${currentReminder?.frequency === freq ? "✓ " : ""}Remind: ${freq}`,
+              () => {
+                const s = store.getState();
+                const title = s.page ? pageTitle(s.page.page) : "Untitled";
+                const icon = s.page ? pageEmoji(s.page.page) : null;
+                void setReminder(pageId, title, icon, freq);
+                s.showToast(`You'll be reminded ${freq}`);
+              },
+            ),
+          )}
+          {currentReminder &&
+            item("Remove reminder", () => {
+              void setReminder(pageId, currentReminder.title, currentReminder.icon, null);
+              store.getState().showToast("Reminder removed");
+            })}
+        </>
+      )}
       <div className="sep" />
       {realPage &&
         item("Move to trash", () => void store.getState().deletePage())}

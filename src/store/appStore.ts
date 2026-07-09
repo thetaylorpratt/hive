@@ -269,6 +269,8 @@ interface AppState {
   deleteFolder: (folderId: string) => Promise<void>;
   renameFolder: (folderId: string, name: string) => Promise<void>;
   filePageIntoFolder: (folderId: string) => Promise<void>;
+  moveItemToSpace: (itemId: string, spaceId: string) => Promise<void>;
+  fileItemIntoFolder: (itemId: string, folderId: string) => Promise<void>;
   toggleSidebar: () => void;
   setSidebarWidth: (width: number) => void;
   setCommandBarOpen: (open: boolean) => void;
@@ -841,6 +843,35 @@ export const useAppStore = create<AppState>((set, get) => ({
       get().sidebarItems.find((i) => i.notionPageId === pageId)?.id ?? item.id,
       folderId,
     );
+    const folder = get().folders.find((f) => f.id === folderId);
+    get().showToast(`Filed into ${folder?.name ?? "folder"}`);
+  },
+
+  /** Right-click "Move to {Space}" — itemId-keyed (unlike movePageToSpace,
+   * which resolves/creates by notionPageId). Favorites transcend Spaces
+   * (spaceId null), so moving one into a Space would otherwise be a no-op —
+   * demote it to "pinned" in the same write so the move is visible. */
+  moveItemToSpace: async (itemId: string, spaceId: string) => {
+    const item = get().sidebarItems.find((i) => i.id === itemId);
+    if (!item) return;
+    await org.updateItem(itemId, {
+      spaceId,
+      parentFolderId: null,
+      ...(item.tier === "favorite" ? { tier: "pinned" as Tier } : {}),
+    });
+    await get().refreshSidebar();
+    const space = get().spaces.find((s) => s.id === spaceId);
+    if (space) get().showToast(`Moved to ${space.name}`);
+  },
+
+  /** Right-click "Add to {folder}" for an arbitrary sidebar item — mirrors
+   * filePageIntoFolder's pin-then-file sequence, but for an item that's
+   * already in the sidebar (no need to touchToday it in first). */
+  fileItemIntoFolder: async (itemId: string, folderId: string) => {
+    const item = get().sidebarItems.find((i) => i.id === itemId);
+    if (!item) return;
+    if (item.tier !== "pinned") await get().setItemTier(itemId, "pinned");
+    await get().moveItemToFolder(itemId, folderId);
     const folder = get().folders.find((f) => f.id === folderId);
     get().showToast(`Filed into ${folder?.name ?? "folder"}`);
   },

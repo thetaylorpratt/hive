@@ -2350,6 +2350,72 @@ tr:hover .hive-row-gutter {
   transform: translateX(11px);
 }
 
+/* Sidebar row right-click menu. Portaled to <body> (position set inline by
+ * the component, per the same fixed-position-escapes-WebKit-clipping
+ * pattern as the DatabaseView Popover) — this rule only carries the visual
+ * chrome for the inner box, matching .hive-db-dropdown's density. */
+.hive-ctx-menu {
+  min-width: 200px;
+  max-width: 280px;
+  z-index: 1000;
+  background: var(--hive-color-bg-surface);
+  border: 1px solid var(--hive-color-border);
+  border-radius: var(--hive-radius);
+  box-shadow: var(--hive-shadow-popover);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: hive-menu-in 150ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hive-ctx-menu { animation: none !important; }
+}
+.hive-ctx-menu .row {
+  font: inherit;
+  font-size: 0.82rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: none;
+  color: var(--hive-color-fg-secondary);
+  cursor: pointer;
+  text-align: left;
+  padding: 5px 8px;
+  border-radius: var(--hive-radius-sm);
+  transition: background-color 0.15s ease-in-out;
+  white-space: nowrap;
+}
+.hive-ctx-menu .row:hover {
+  background: var(--hive-color-bg-subtle);
+  color: var(--hive-color-fg);
+}
+.hive-ctx-menu .row.create {
+  color: var(--hive-color-accent);
+}
+.hive-ctx-menu .row.danger:hover {
+  background: var(--hive-color-critical-bg);
+  color: var(--hive-color-critical-fg);
+}
+.hive-ctx-menu .sep {
+  height: 1px;
+  background: var(--hive-color-border);
+  margin: 4px 2px;
+}
+.hive-ctx-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.hive-ctx-dot.accent-sky { background: #0077cc; }
+.hive-ctx-dot.accent-green { background: #4ca600; }
+.hive-ctx-dot.accent-amber { background: #a94a04; }
+.hive-ctx-dot.accent-red { background: #c54b49; }
+.hive-ctx-dot.accent-purple { background: #7e57c2; }
+.hive-ctx-dot.accent-teal { background: #00838f; }
+
 .hive-title-edit {
   outline: none;
   border-radius: var(--hive-radius-sm);

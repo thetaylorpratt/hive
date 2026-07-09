@@ -1,4 +1,64 @@
+import { useSyncExternalStore } from "react";
 import { useAppStore } from "../store/appStore";
+import {
+  completeReminder,
+  dueReminders,
+  subscribeReminders,
+} from "../lib/reminders";
+import "../styles/reminders.css";
+
+const MINUTE = 60 * 1000;
+const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
+
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  if (diff < MINUTE) return "just now";
+  if (diff < HOUR) return `${Math.floor(diff / MINUTE)}m ago`;
+  if (diff < DAY) return `${Math.floor(diff / HOUR)}h ago`;
+  const days = Math.floor(diff / DAY);
+  if (days < 7) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
+/** "Review reminders" section: recurring-review due list, above the
+ * comments/mentions inbox proper. */
+function ReminderSection() {
+  const reminders = useSyncExternalStore(subscribeReminders, dueReminders);
+  const openPage = useAppStore((s) => s.openPage);
+  const setOpen = useAppStore((s) => s.setInboxOpen);
+  if (reminders.length === 0) return null;
+
+  return (
+    <div className="hive-reminder-section">
+      <div className="hive-reminder-head">Review reminders</div>
+      {reminders.map((r) => (
+        <div key={r.id} className="hive-reminder-row">
+          <span className="icon">{r.icon ?? "📄"}</span>
+          <button
+            className="body"
+            onClick={() => {
+              setOpen(false);
+              void openPage(r.pageId);
+            }}
+          >
+            <span className="title">{r.title}</span>
+            <span className="meta">
+              review {r.frequency} · due {relativeTime(r.nextDueAt)}
+            </span>
+          </button>
+          <button
+            className="done"
+            title="Mark reviewed"
+            onClick={() => void completeReminder(r.id)}
+          >
+            ✓ Done
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 /** Comments/mentions inbox (Tier B): click opens the page, ✓ dismisses. */
 export function InboxPanel() {
@@ -12,6 +72,7 @@ export function InboxPanel() {
   return (
     <div className="hive-cmdbar-backdrop" onMouseDown={() => setOpen(false)}>
       <div className="hive-inbox" onMouseDown={(e) => e.stopPropagation()}>
+        <ReminderSection />
         <div className="head">Inbox — comments & mentions on watched docs</div>
         {inbox.length === 0 && (
           <div className="hive-cmdbar-empty">

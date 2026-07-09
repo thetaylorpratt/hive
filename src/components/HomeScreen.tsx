@@ -43,6 +43,8 @@ const TIPS: { keys?: string; text: string }[] = [
   { text: "Drag docs from Today to Pinned to keep them; drop onto folders to file them. Today auto-archives in 24h." },
   { keys: "alias", text: "Type “alias mtg” in ⌘T to bind a word to the current doc — strict-prefix, always ranks first." },
   { text: "Right-click a Space dot to give it an emoji icon and accent color." },
+  { text: "Right-click any sidebar doc: move it to a Space, file it into a folder, pin, star, or remove." },
+  { text: "⏰ Set a review reminder on any page (⋯ menu) — daily, weekly, or monthly. Due reviews land in your inbox." },
   { text: "A blue dot means the doc changed since you last read it — open it to see exactly what changed." },
   { keys: "⌘D", text: "Duplicate the current block. ⌘⌥1–8 converts block types. Tab indents list items." },
   { keys: "?", text: "See every keyboard shortcut on one sheet." },
