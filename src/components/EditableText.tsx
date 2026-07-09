@@ -1,5 +1,8 @@
 import { useContext, useEffect, useRef, useState } from "react";
 import { dlog } from "../lib/debugLog";
+import { searchUsers, userMentionItem, workspaceUsers } from "../lib/users";
+import type { WorkspaceUser } from "../lib/users";
+import { MentionInput } from "./MentionInput";
 import { ReadOnlyContext } from "./BlockRenderer";
 import { useAppStore } from "../store/appStore";
 import { htmlToRichText, richTextToHtml } from "../lib/richTextHtml";
@@ -80,6 +83,34 @@ function emojiContext(): {
     start: range.startOffset - match[0].length,
     end: range.startOffset,
     query: match[1].toLowerCase(),
+  };
+}
+
+/** The `@name` under the caret, if any — "@" must start a word. */
+function mentionContext(): {
+  node: Text;
+  start: number;
+  end: number;
+  query: string;
+} | null {
+  const sel = window.getSelection();
+  if (!sel?.rangeCount) return null;
+  const range = sel.getRangeAt(0);
+  if (!range.collapsed || range.startContainer.nodeType !== Node.TEXT_NODE) {
+    return null;
+  }
+  const node = range.startContainer as Text;
+  const upto = (node.textContent ?? "").slice(0, range.startOffset);
+  // word-boundary @ so emails ("x@y") don't trigger; query may span a space
+  // (first + last name) but not two
+  const match = /(?:^|\s)@([A-Za-z0-9][A-Za-z0-9._-]*(?: [A-Za-z0-9._-]*)?)?$/.exec(upto);
+  if (!match) return null;
+  const full = `@${match[1] ?? ""}`;
+  return {
+    node,
+    start: range.startOffset - full.length,
+    end: range.startOffset,
+    query: match[1] ?? "",
   };
 }
 
@@ -229,6 +260,14 @@ export function EditableText({
   const [slash, setSlash] = useState<{ filter: string; index: number } | null>(null);
   const [emojiMenu, setEmojiMenu] = useState<{ query: string; index: number } | null>(null);
   const emojiMatches = emojiMenu ? searchEmoji(emojiMenu.query) : [];
+  const [mentionMenu, setMentionMenu] = useState<{ query: string; index: number } | null>(null);
+  const [people, setPeople] = useState<WorkspaceUser[]>([]);
+  const mentionMatches = mentionMenu ? searchUsers(people, mentionMenu.query) : [];
+  useEffect(() => {
+    if (mentionMenu && people.length === 0) {
+      void workspaceUsers().then(setPeople).catch(() => undefined);
+    }
+  }, [mentionMenu, people.length]);
   const [linkInput, setLinkInput] = useState(false);
   const [colorMenu, setColorMenu] = useState(false);
   const [commentInput, setCommentInput] = useState(false);
@@ -381,6 +420,33 @@ export function EditableText({
     void convertBlock(block.id, type);
   };
 
+  const insertMention = (user: WorkspaceUser) => {
+    const ctx = mentionContext();
+    setMentionMenu(null);
+    if (!ctx) return;
+    const item = userMentionItem(user);
+    const text = ctx.node.textContent ?? "";
+    const chip = document.createElement("span");
+    chip.className = "hive-exotic";
+    chip.contentEditable = "false";
+    chip.dataset.exotic = JSON.stringify(item);
+    chip.textContent = `@${user.name}`;
+    const before = document.createTextNode(text.slice(0, ctx.start));
+    const after = document.createTextNode(` ${text.slice(ctx.end)}`);
+    const parent = ctx.node.parentNode;
+    if (!parent) return;
+    parent.replaceChild(after, ctx.node);
+    parent.insertBefore(chip, after);
+    parent.insertBefore(before, chip);
+    const sel = window.getSelection();
+    const range = document.createRange();
+    range.setStart(after, 1);
+    range.collapse(true);
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+    dirty.current = true;
+  };
+
   const insertEmoji = (char: string) => {
     const ctx = emojiContext();
     setEmojiMenu(null);
@@ -402,6 +468,31 @@ export function EditableText({
       e.preventDefault();
       setColorMenu(false);
       return;
+    }
+
+    // @mention completion menu
+    if (mentionMenu && mentionMatches.length > 0) {
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        insertMention(mentionMatches[mentionMenu.index]);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setMentionMenu(null);
+        return;
+      }
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const delta = e.key === "ArrowDown" ? 1 : -1;
+        setMentionMenu((prev) =>
+          prev && {
+            ...prev,
+            index: (prev.index + delta + mentionMatches.length) % mentionMatches.length,
+          },
+        );
+        return;
+      }
     }
 
     // :emoji: completion menu
@@ -611,6 +702,9 @@ export function EditableText({
               ? { query: ctx.query, index: 0 }
               : null,
           );
+          // @mention completion (opens on the @ itself, like Notion)
+          const mctx = mentionContext();
+          setMentionMenu(mctx ? { query: mctx.query, index: 0 } : null);
           // '---' converts to a divider on the third hyphen (Notion)
           if (
             block.type === "paragraph" &&
@@ -643,25 +737,20 @@ export function EditableText({
         </div>
       )}
       {commentInput && (
-        <div className="hive-slash-menu hive-link-input">
-          <input
-            className="hive-input"
+        <div
+          className="hive-slash-menu hive-link-input"
+          onKeyDown={(e) => e.stopPropagation()}
+        >
+          <MentionInput
             autoFocus
-            placeholder="Comment… (posted to the page, quoting selection)"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                const value = (e.target as HTMLInputElement).value.trim();
-                const quote = savedRange.current?.toString() ?? "";
-                setCommentInput(false);
-                if (value) {
-                  void useAppStore.getState().createComment(value, quote);
-                }
-                ref.current?.focus();
-              }
-              if (e.key === "Escape") setCommentInput(false);
-              e.stopPropagation();
+            placeholder="Comment… (@ to mention; anchors to selection)"
+            onSubmit={(value, mentions) => {
+              const quote = savedRange.current?.toString() ?? "";
+              setCommentInput(false);
+              void useAppStore.getState().createComment(value, quote, mentions);
+              ref.current?.focus();
             }}
-            onBlur={() => setCommentInput(false)}
+            onCancel={() => setCommentInput(false)}
           />
           <button
             className="hive-comment-native"
@@ -721,6 +810,23 @@ export function EditableText({
                 {color.replace("_", " ")}
               </div>
             ))}
+        </div>
+      )}
+      {mentionMenu && mentionMatches.length > 0 && (
+        <div className="hive-slash-menu">
+          {mentionMatches.map((u, i) => (
+            <div
+              key={u.id}
+              className={`hive-slash-row${i === mentionMenu.index ? " selected" : ""}`}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                insertMention(u);
+              }}
+            >
+              <span style={{ marginRight: "0.5em" }}>👤</span>
+              {u.name}
+            </div>
+          ))}
         </div>
       )}
       {emojiMenu && emojiMatches.length > 0 && (

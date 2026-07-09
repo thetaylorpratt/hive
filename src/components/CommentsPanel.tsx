@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { ArrowUp, ChatCircle, UserCircle } from "@phosphor-icons/react";
+import { ChatCircle, UserCircle } from "@phosphor-icons/react";
 import { useAppStore } from "../store/appStore";
+import { MentionInput } from "./MentionInput";
 import { DEMO_PAGE_ID } from "../lib/demoPage";
 
 /**
@@ -28,15 +29,6 @@ function Thread({ thread }: { thread: import("../lib/notionMcp").CommentThread }
   const users = useAppStore((s) => s.commentUsers);
   const replyToThread = useAppStore((s) => s.replyToThread);
   const [replying, setReplying] = useState(false);
-  const [draft, setDraft] = useState("");
-
-  const send = () => {
-    const text = draft.trim();
-    if (!text) return;
-    setDraft("");
-    setReplying(false);
-    void replyToThread(thread.id, text);
-  };
 
   return (
     <div className="hive-comment-thread" data-thread-id={thread.id}>
@@ -68,20 +60,16 @@ function Thread({ thread }: { thread: import("../lib/notionMcp").CommentThread }
       {thread.comments.length > 0 &&
         (replying ? (
         <div className="reply-row">
-          <input
-            className="hive-input"
+          <MentionInput
+            placeholder="Reply… (@ to mention)"
             autoFocus
-            placeholder="Reply…"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") send();
-              if (e.key === "Escape") setReplying(false);
+            withButton
+            onSubmit={(text, mentions) => {
+              setReplying(false);
+              void replyToThread(thread.id, text, mentions);
             }}
+            onCancel={() => setReplying(false)}
           />
-          <button className="hive-btn hive-btn-primary" onClick={send} title="Send">
-            <ArrowUp size={14} weight="bold" />
-          </button>
         </div>
       ) : (
         <button className="reply-link" onClick={() => setReplying(true)}>
@@ -100,7 +88,6 @@ export function CommentsPanel() {
   const loadComments = useAppStore((s) => s.loadComments);
   const createComment = useAppStore((s) => s.createComment);
   const connectPersonalNotion = useAppStore((s) => s.connectPersonalNotion);
-  const [draft, setDraft] = useState("");
 
   // Self-healing load: anything that nulls the threads (navigation, the
   // stale-page refresh swapping the doc underneath us) triggers a reload —
@@ -128,12 +115,6 @@ export function CommentsPanel() {
   }, [focusThreadId, threads]);
 
   const realPage = pageId && pageId !== DEMO_PAGE_ID;
-  const send = () => {
-    const text = draft.trim();
-    if (!text) return;
-    setDraft("");
-    void createComment(text, "");
-  };
 
   return (
     <aside className="hive-comments">
@@ -153,16 +134,11 @@ export function CommentsPanel() {
 
       {realPage && (
         <div className="composer">
-          <input
-            className="hive-input"
-            placeholder="Comment on this page…"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && send()}
+          <MentionInput
+            placeholder="Comment on this page… (@ to mention)"
+            withButton
+            onSubmit={(text, mentions) => void createComment(text, "", mentions)}
           />
-          <button className="hive-btn hive-btn-primary" onClick={send} title="Send">
-            <ArrowUp size={14} weight="bold" />
-          </button>
         </div>
       )}
 

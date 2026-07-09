@@ -248,7 +248,11 @@ interface AppState {
   dismissInboxItem: (id: string) => void;
   setInboxOpen: (open: boolean) => void;
   setCaptureOpen: (open: boolean) => void;
-  createComment: (text: string, quote: string) => Promise<void>;
+  createComment: (
+    text: string,
+    quote: string,
+    mentions?: import("../lib/commentDraft").DraftMention[],
+  ) => Promise<void>;
 
   // personal Notion identity (hosted MCP OAuth) + comments panel
   mcpStatus: "disconnected" | "pending" | "connected";
@@ -263,7 +267,11 @@ interface AppState {
   loadComments: () => Promise<void>;
   focusThreadId: string | null;
   focusThread: (threadId: string) => void;
-  replyToThread: (discussionId: string, text: string) => Promise<void>;
+  replyToThread: (
+    discussionId: string,
+    text: string,
+    mentions?: import("../lib/commentDraft").DraftMention[],
+  ) => Promise<void>;
   lastOpenInput: string | null;
   movePageOpen: boolean;
   setMovePageOpen: (open: boolean) => void;
@@ -1195,18 +1203,19 @@ export const useAppStore = create<AppState>((set, get) => ({
    * (page-level comments or thread replies only), so the selection is
    * quoted for context — teammates see it in Notion's page comments.
    */
-  createComment: async (text: string, quote: string) => {
+  createComment: async (text: string, quote: string, mentions = []) => {
     const { pageId, auth, mcpStatus } = get();
     if (!pageId || pageId === DEMO_PAGE_ID || auth.status !== "ready") {
       get().showToast("Comments need a real page and a connected token");
       return;
     }
+    const { draftToMarkdown, draftToRichText } = await import("../lib/commentDraft");
     // Preferred path: the user's own identity via hosted-MCP OAuth. Posts
     // under their real name and — when there's a selection — anchors the
     // comment inline, which the REST API cannot do at all.
     if (mcpStatus === "connected") {
       try {
-        await mcp.createCommentAsUser(pageId, text, {
+        await mcp.createCommentAsUser(pageId, draftToMarkdown(text, mentions), {
           quote: quote.trim() || undefined,
         });
         get().showToast(
@@ -1236,7 +1245,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           annotations: { italic: true },
         });
       }
-      rich.push({ text: { content: text } });
+      rich.push(...draftToRichText(text, mentions));
       await enqueue(() =>
         notion().comments.create({
           parent: { page_id: pageId },
@@ -1427,17 +1436,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  replyToThread: async (discussionId: string, text: string) => {
+  replyToThread: async (discussionId: string, text: string, mentions = []) => {
     const { pageId, mcpStatus } = get();
     if (!pageId) return;
+    const { draftToMarkdown, draftToRichText } = await import("../lib/commentDraft");
     try {
       if (mcpStatus === "connected") {
-        await mcp.createCommentAsUser(pageId, text, { discussionId });
+        await mcp.createCommentAsUser(pageId, draftToMarkdown(text, mentions), {
+          discussionId,
+        });
       } else {
         const who = get().auth.userName;
         const rich: unknown[] = [];
         if (who) rich.push({ text: { content: `${who}: ` }, annotations: { bold: true } });
-        rich.push({ text: { content: text } });
+        rich.push(...draftToRichText(text, mentions));
         // REST replies want the bare discussion uuid, not the discussion:// URL
         const bare = discussionId.split("/").pop() ?? discussionId;
         await enqueue(() =>

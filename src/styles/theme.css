@@ -2002,6 +2002,24 @@ tr:hover .hive-row-gutter {
   color: var(--hive-color-fg-muted);
 }
 
+/* Mention-capable comment input */
+.hive-mention-input {
+  position: relative;
+  display: flex;
+  gap: 6px;
+  flex: 1;
+  align-items: center;
+}
+.hive-mention-input .hive-input {
+  flex: 1;
+}
+.hive-mention-input .hive-mention-menu {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  z-index: 800;
+}
+
 /* Atomic mention/equation chips inside editable blocks */
 .hive-exotic {
   background: var(--hive-color-accent-subtle, var(--hive-color-bg-subtle));
