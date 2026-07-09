@@ -108,6 +108,12 @@ body {
   padding: 2.5rem 2rem 6rem;
 }
 
+/* click-below-to-append: fills the remaining space under the last block */
+.hive-below-strip {
+  min-height: 20vh;
+  cursor: text;
+}
+
 .hive-doc h1,
 .hive-doc h2,
 .hive-doc h3 {
@@ -254,7 +260,11 @@ body {
   pointer-events: none;
 }
 .hive-editable a {
-  pointer-events: none; /* editing surface: caret over links, no navigation */
+  /* Links are clickable like Notion — the global anchor intercept routes
+     them (Notion → in-app, external → fallback browser). pointer-events:
+     none used to make them inert, which ALSO let ⌘-click fall through to
+     WebKit's native new-window policy → macOS → Safari. */
+  cursor: pointer;
 }
 
 .hive-editable-wrap {

@@ -392,6 +392,30 @@
 .hive-db-dropdown-row.create {
   color: var(--hive-color-accent);
 }
+.hive-db-option-row-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.hive-db-option-delete {
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: none;
+  padding: 2px;
+  border-radius: var(--hive-radius-sm);
+  color: var(--hive-color-fg-muted);
+  cursor: pointer;
+  opacity: 0;
+}
+.hive-db-option-row:hover .hive-db-option-delete {
+  opacity: 1;
+}
+.hive-db-option-delete:hover {
+  color: var(--hive-color-critical-fg);
+  background: var(--hive-color-critical-bg);
+}
 .hive-db-dropdown-empty {
   padding: 6px;
   color: var(--hive-color-fg-muted);

@@ -15,6 +15,7 @@ import {
   Question,
   TextAlignLeft,
   TextT,
+  Trash,
   User,
   X,
 } from "@phosphor-icons/react";
@@ -29,6 +30,7 @@ import {
   archiveRow,
   addColumn,
   addSelectOption,
+  deleteSelectOption,
   propertyToText,
   renameDatabase,
   renameColumn,
@@ -226,6 +228,7 @@ interface CellCtx {
   onCancelEdit: () => void;
   onCommitProperty: (row: DbRow, column: DbColumn, draft: PropertyDraft, localOverride?: unknown) => void;
   onCreateOption: (row: DbRow, column: DbColumn, name: string, multi: boolean) => void;
+  onDeleteOption: (column: DbColumn, name: string) => void;
   onOpenPage: (pageId: string) => void;
 }
 
@@ -495,11 +498,26 @@ function OptionDropdown({
             {filtered.map((o) => {
               const checked = selectedNames.includes(o.name);
               return (
-                <div key={o.name} className="hive-db-dropdown-row" onClick={() => pick(o.name)}>
+                <div key={o.name} className="hive-db-dropdown-row hive-db-option-row" onClick={() => pick(o.name)}>
                   <span className="hive-db-chip" data-hive-color={o.color ?? "default"}>
                     {o.name}
                   </span>
-                  {checked && <Check size={12} />}
+                  <span className="hive-db-option-row-right">
+                    {checked && <Check size={12} />}
+                    {column.type !== "status" && (
+                      <button
+                        type="button"
+                        className="hive-db-option-delete"
+                        title={`Delete "${o.name}"`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          ctx.onDeleteOption(column, o.name);
+                        }}
+                      >
+                        <Trash size={11} />
+                      </button>
+                    )}
+                  </span>
                 </div>
               );
             })}
@@ -949,6 +967,52 @@ export function DatabaseView({ databaseId }: { databaseId: string }) {
       });
   }
 
+  /** Clears the deleted option's chip from any row currently showing it —
+   * mirrors what Notion does server-side when an option disappears. */
+  function stripOptionFromRows(rowsIn: DbRow[], column: DbColumn, optionName: string): DbRow[] {
+    return rowsIn.map((r) => {
+      const val = r.properties[column.name];
+      if (column.type === "multi_select") {
+        const names = extractMultiNames(val);
+        if (!names.includes(optionName)) return r;
+        const nextNames = names.filter((n) => n !== optionName);
+        return {
+          ...r,
+          properties: {
+            ...r.properties,
+            [column.name]: { multi_select: nextNames.map((name) => ({ name })) },
+          },
+        };
+      }
+      if (extractSelectName(val, column.type) !== optionName) return r;
+      return { ...r, properties: { ...r.properties, [column.name]: { select: null } } };
+    });
+  }
+
+  function handleDeleteOption(column: DbColumn, optionName: string) {
+    if (!schema) return;
+    const prevSchema = schema;
+    const prevRows = rows;
+    setSchema((prev) =>
+      prev
+        ? {
+            ...prev,
+            columns: prev.columns.map((c) =>
+              c.id === column.id
+                ? { ...c, options: (c.options ?? []).filter((o) => o.name !== optionName) }
+                : c,
+            ),
+          }
+        : prev,
+    );
+    setRows((prev) => stripOptionFromRows(prev, column, optionName));
+    deleteSelectOption(schema, column, optionName).catch((err) => {
+      setSchema(prevSchema);
+      setRows(prevRows);
+      useAppStore.getState().showToast(`Couldn't delete option: ${msg(err)}`);
+    });
+  }
+
   function startEdit(row: DbRow, column: DbColumn, initial: string) {
     setEditKey(cellKey(row, column));
     setEditValue(initial);
@@ -1122,6 +1186,7 @@ export function DatabaseView({ databaseId }: { databaseId: string }) {
     onCancelEdit: cancelEdit,
     onCommitProperty: commitProperty,
     onCreateOption: createOption,
+    onDeleteOption: handleDeleteOption,
     onOpenPage: (pageId: string) => void useAppStore.getState().openPage(pageId),
   };
 

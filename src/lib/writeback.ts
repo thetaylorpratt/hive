@@ -259,17 +259,19 @@ export async function insertParagraphAfter(
   afterId: string,
   pageParentId: string, // the page id (used when afterId is top-level)
   sink: WriteSink,
+  type = "paragraph", // Notion parity: Enter in a list continues the list
 ): Promise<WriteResult & { newBlockId: string; remoteId: Promise<string | null> }> {
   // `after` must be a direct child of the append target: resolve the real
   // parent for nested siblings instead of always appending to the page.
   const parentBlock = findParentOf(blocks, afterId);
   const parentId = parentBlock?.id ?? pageParentId;
   const localId = `local-${crypto.randomUUID()}`;
+  const payload = emptyPayload(type);
   const newBlock: HiveBlock = {
     id: localId,
-    type: "paragraph",
+    type,
     has_children: false,
-    paragraph: { rich_text: [] },
+    [type]: payload,
   };
   const next = insertAfterInTree(blocks, afterId, newBlock);
   await persist(pageId, next);
@@ -280,7 +282,7 @@ export async function insertParagraphAfter(
           notion().blocks.children.append({
             block_id: parentId,
             after: afterId,
-            children: [{ paragraph: { rich_text: [] } } as never],
+            children: [{ [type]: payload } as never],
           }),
         ).then(
           (resp) =>

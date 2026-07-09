@@ -352,6 +352,24 @@ function Content() {
           )}
         </div>
         <BlockList blocks={page.blocks} />
+        {canEdit && (
+          <div
+            className="hive-below-strip"
+            onClick={() => {
+              const blocks = page.blocks;
+              const last = blocks[blocks.length - 1];
+              if (!last) return;
+              const payload = last[last.type] as
+                | { rich_text?: unknown[] }
+                | undefined;
+              if (last.type === "paragraph" && !payload?.rich_text?.length) {
+                useAppStore.getState().setFocusBlock(last.id);
+              } else {
+                void useAppStore.getState().insertParagraphAfter(last.id);
+              }
+            }}
+          />
+        )}
       </article>
     );
   }
@@ -429,13 +447,19 @@ export default function App() {
       if (!a) return;
       const href = a.getAttribute("href") ?? "";
       if (!/^https?:\/\//i.test(href)) return;
+      // preventDefault also suppresses WebKit's native ⌘-click/middle-click
+      // "open in new window" policy, which would end up in Safari
       e.preventDefault();
       const id = /notion\.(so|com)/i.test(href) ? normalizePageId(href) : null;
-      if (id) void useAppStore.getState().openPage(id);
+      if (id && !e.metaKey) void useAppStore.getState().openPage(id);
       else void invoke("forward_url", { url: href }).catch(() => undefined);
     };
     document.addEventListener("click", onLinkClick, true);
-    return () => document.removeEventListener("click", onLinkClick, true);
+    document.addEventListener("auxclick", onLinkClick, true);
+    return () => {
+      document.removeEventListener("click", onLinkClick, true);
+      document.removeEventListener("auxclick", onLinkClick, true);
+    };
   }, [init]);
 
   // URL routing (built-in Finicky). Hive handles hive:// deep links AND —

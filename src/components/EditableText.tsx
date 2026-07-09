@@ -4,11 +4,12 @@ import { searchUsers, userMentionItem, workspaceUsers } from "../lib/users";
 import type { WorkspaceUser } from "../lib/users";
 import { MentionInput } from "./MentionInput";
 import { ReadOnlyContext } from "./BlockRenderer";
-import { useAppStore } from "../store/appStore";
+import { selectableBlockIds, useAppStore } from "../store/appStore";
 import { htmlToRichText, richTextToHtml } from "../lib/richTextHtml";
 import { searchEmoji } from "../lib/emoji";
 import { RichText } from "./RichText";
 import type { HiveBlock, RichTextItem } from "../lib/types";
+import "../styles/selection.css";
 
 /** Notion's ⌘⌥<digit> block conversions (using e.code — ⌥ mutates e.key). */
 const CMD_OPT_TYPES: Record<string, string> = {
@@ -119,6 +120,24 @@ function caretAtEnd(el: HTMLElement): boolean {
   r.selectNodeContents(el);
   r.setStart(sel.getRangeAt(0).endContainer, sel.getRangeAt(0).endOffset);
   return r.toString().length === 0;
+}
+
+/** Does the current selection cover this element's ENTIRE content (both
+ * boundaries flush with the block edges)? Same range-clipping trick as
+ * caretAtStart/caretAtEnd. An empty block counts as "fully selected" so
+ * ⌘A on a blank line escalates immediately (nothing to select-all first). */
+function selectionSpansBlock(el: HTMLElement): boolean {
+  if ((el.textContent ?? "") === "") return true;
+  const sel = window.getSelection();
+  if (!sel?.rangeCount || sel.isCollapsed) return false;
+  const range = sel.getRangeAt(0);
+  const before = document.createRange();
+  before.selectNodeContents(el);
+  before.setEnd(range.startContainer, range.startOffset);
+  const after = document.createRange();
+  after.selectNodeContents(el);
+  after.setStart(range.endContainer, range.endOffset);
+  return before.toString().length === 0 && after.toString().length === 0;
 }
 
 function caretOnFirstLine(el: HTMLElement): boolean {
@@ -322,6 +341,8 @@ export function EditableText({
   const deleteBlock = useAppStore((s) => s.deleteBlock);
   const focusBlockId = useAppStore((s) => s.focusBlockId);
   const setFocusBlock = useAppStore((s) => s.setFocusBlock);
+  // primitive selector — a filtered array would re-render on every store tick
+  const isSelected = useAppStore((s) => s.selectedBlockIds?.includes(block.id) ?? false);
   const ref = useRef<HTMLDivElement>(null);
   const [slash, setSlash] = useState<{ filter: string; index: number } | null>(null);
   const [emojiMenu, setEmojiMenu] = useState<{ query: string; index: number } | null>(null);
@@ -641,6 +662,17 @@ export function EditableText({
         void useAppStore.getState().duplicateBlock(block.id);
         return;
       }
+      if (k === "a" && !e.shiftKey) {
+        // First ⌘A: let the browser select-all within this contentEditable.
+        // Second ⌘A (already fully selected, or an empty block): escalate to
+        // block-level multi-selection — blur so keystrokes stop landing here
+        // and hand off to the global keymap handlers (Escape/Backspace/⌘C/⌘A).
+        if (!ref.current || !selectionSpansBlock(ref.current)) return;
+        e.preventDefault();
+        ref.current.blur();
+        useAppStore.getState().setBlockSelection(selectableBlockIds());
+        return;
+      }
     }
 
     // ⌘⌥0-8 block conversions, preserving current text
@@ -735,7 +767,13 @@ export function EditableText({
         return;
       }
       commit();
-      void insertParagraphAfter(block.id);
+      // Enter in a list continues the list (Notion); empty-Enter exit is
+      // handled above. Toggles don't continue — Enter there means "new line".
+      const CONTINUES = new Set(["bulleted_list_item", "numbered_list_item", "to_do"]);
+      void insertParagraphAfter(
+        block.id,
+        CONTINUES.has(block.type) ? block.type : "paragraph",
+      );
     } else if (e.key === "Backspace" && text.length === 0) {
       e.preventDefault();
       void deleteBlock(block.id, { focusPrevious: true, silent: true });
@@ -745,7 +783,7 @@ export function EditableText({
   };
 
   return (
-    <span className="hive-editable-wrap">
+    <span className={`hive-editable-wrap${isSelected ? " selected" : ""}`}>
       <CommentDot blockId={block.id} />
       <div
         ref={ref}

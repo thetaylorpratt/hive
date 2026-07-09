@@ -1,0 +1,8 @@
+/* Block multi-selection v1 (POLISH_ROUND3 §H) — accent-tinted overlay on the
+   escalated ⌘A selection. `.hive-editable-wrap` is already position:relative
+   display:block (theme.css), so a plain background paints behind its
+   contentEditable + comment dot without disturbing layout. */
+.hive-editable-wrap.selected {
+  background: var(--hive-color-accent-subtle, rgba(0, 119, 204, 0.14));
+  border-radius: var(--hive-radius-sm);
+}

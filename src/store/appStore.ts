@@ -229,10 +229,14 @@ interface AppState {
   // editing (write path)
   focusBlockId: string | null;
   writeError: string | null;
+  // block multi-selection v1 (H) — top-level text-class blocks only
+  selectedBlockIds: string[] | null;
+  setBlockSelection: (ids: string[] | null) => void;
+  deleteSelectedBlocks: () => Promise<void>;
   canEdit: () => boolean;
   editBlockText: (blockId: string, type: string, richText: RichTextItem[]) => Promise<void>;
   toggleTodo: (blockId: string, checked: boolean) => Promise<void>;
-  insertParagraphAfter: (afterId: string) => Promise<void>;
+  insertParagraphAfter: (afterId: string, type?: string) => Promise<void>;
   convertBlock: (
     blockId: string,
     newType: string,
@@ -759,6 +763,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   focusBlockId: null,
   writeError: null,
 
+  selectedBlockIds: null,
+  setBlockSelection: (ids) => set({ selectedBlockIds: ids }),
+  deleteSelectedBlocks: async () => {
+    const ids = get().selectedBlockIds;
+    if (!ids || ids.length === 0) return;
+    set({ selectedBlockIds: null });
+    for (const id of ids) {
+      await get().deleteBlock(id, { silent: true }); // chainWrite-serialized
+    }
+    get().showToast(`${ids.length} block${ids.length === 1 ? "" : "s"} deleted`);
+  },
+
   /** Demo always editable (local echo); real pages need the token. */
   canEdit: () => {
     const { pageId, auth } = get();
@@ -778,13 +794,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     );
   },
 
-  insertParagraphAfter: async (afterId) => {
+  insertParagraphAfter: async (afterId, type = "paragraph") => {
     await chainWrite(async () => {
       const { pageId, page, auth } = get();
       if (!pageId || !page) return;
       const sink = writeback.sinkFor(pageId, auth.status === "ready");
       const result = await writeback.insertParagraphAfter(
-        pageId, page.blocks, afterId, pageId, sink,
+        pageId, page.blocks, afterId, pageId, sink, type,
       );
       if (get().pageId !== pageId) return;
       set({
@@ -1678,3 +1694,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 // Hook for driving the store from browser tooling. Exposed in release
 // builds too — local-only, and live debugging has already paid for itself.
 (window as unknown as Record<string, unknown>).__hiveStore = useAppStore;
+
+/** Top-level text-class block ids of the current page — v1 multi-select
+ * scope (H): direct children of page.blocks only, EDITABLE_TYPES only. */
+export function selectableBlockIds(): string[] {
+  return (useAppStore.getState().page?.blocks ?? [])
+    .filter((b) => writeback.EDITABLE_TYPES.has(b.type))
+    .map((b) => b.id);
+}

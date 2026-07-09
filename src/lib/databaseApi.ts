@@ -397,6 +397,35 @@ export async function addSelectOption(
   );
 }
 
+export async function deleteSelectOption(
+  schema: DbSchema,
+  column: DbColumn,
+  optionName: string,
+): Promise<void> {
+  // status options can't be deleted via API — callers must never invoke this
+  // for a status column (enforced in the UI, not offered there either).
+  if (column.type === "status") return;
+
+  const ds = (await enqueue(() =>
+    notion().dataSources.retrieve({ data_source_id: schema.dataSourceId } as never),
+  )) as { properties: Record<string, Record<string, unknown>> };
+
+  const fresh = ds.properties[column.name];
+  const existing = (fresh?.[column.type] as { options?: DbOption[] } | undefined)?.options ?? [];
+  const remaining = existing.filter((o) => o.name !== optionName);
+  if (remaining.length === existing.length) return;
+
+  // renaming/recoloring existing options is rejected by the API — send the
+  // remaining options as {id}-only so nothing else about them is touched.
+  const options = remaining.map((o) => ({ id: o.id }));
+  await enqueue(() =>
+    notion().dataSources.update({
+      data_source_id: schema.dataSourceId,
+      properties: { [column.name]: { [column.type]: { options } } },
+    } as never),
+  );
+}
+
 /* ---------- schema editing (V2) ---------- */
 
 export async function renameDatabase(
