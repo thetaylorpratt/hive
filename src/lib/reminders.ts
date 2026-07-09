@@ -1,48 +1,51 @@
 import Database from "@tauri-apps/plugin-sql";
 
 /**
- * Recurring review reminders: "remind me to review this page every
- * day/week/month." Local-only (never written to Notion), surfaced through
- * Hive's existing Inbox panel alongside comments/mentions.
+ * One-shot page reminders: "remind me to look at this again in 30
+ * min/1h/3h/tomorrow/next week/custom." Local-only (never written to
+ * Notion), surfaced through Hive's existing Inbox panel alongside
+ * comments/mentions.
  *
  * Backend: SQLite under Tauri (page_reminder table, created lazily); a
  * localStorage JSON mirror when the SQL plugin is unavailable (plain-browser
  * dev/preview) — same dual-backend spirit as orgDb.ts, kept intentionally
  * simple since this is a small, single-table concern.
+ *
+ * Note: the table keeps a `frequency` column for backward compatibility with
+ * rows written by the earlier recurring-reminder feature. New rows always
+ * write "once"; old rows with a legacy value ("daily"/"weekly"/"monthly")
+ * are read back and treated as a plain one-shot due at their existing
+ * next_due_at — no migration, no special-casing beyond that.
  */
 
-export type ReminderFreq = "daily" | "weekly" | "monthly";
+/** Legacy frequency values from the old recurring model — kept only so old
+ * rows deserialize without throwing. Not written by current code. */
+export type LegacyReminderFreq = "once" | "daily" | "weekly" | "monthly";
 
 export interface PageReminder {
   id: string;
   pageId: string;
   title: string;
   icon: string | null;
-  frequency: ReminderFreq;
+  /** Optional legacy field; current code always writes "once" and never
+   * reads this to make decisions. */
+  frequency?: LegacyReminderFreq;
   nextDueAt: string;
 }
 
 const LOCAL_KEY = "hive-reminders";
 const NOTIFY_MS = 60 * 1000;
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-const PERIOD_MS: Record<ReminderFreq, number> = {
-  daily: DAY_MS,
-  weekly: 7 * DAY_MS,
-  monthly: 30 * DAY_MS,
-};
+const HOUR_MS = 60 * 60 * 1000;
 
 const uuid = () => crypto.randomUUID();
 const nowIso = () => new Date().toISOString();
-const addPeriod = (freq: ReminderFreq, fromMs = Date.now()) =>
-  new Date(fromMs + PERIOD_MS[freq]).toISOString();
 
 interface Row {
   id: string;
   notion_page_id: string;
   title_cache: string | null;
   icon_cache: string | null;
-  frequency: ReminderFreq;
+  frequency: LegacyReminderFreq;
   next_due_at: string;
   created_at: string;
 }
@@ -179,20 +182,21 @@ export function dueReminders(): PageReminder[] {
 }
 
 /**
- * Set, change, or remove (freq === null) the reminder on a page. First due
- * is one period from now. Upserts by pageId — a page has at most one
+ * Set, change, or remove (dueAt === null) the one-shot reminder on a page.
+ * dueAt is an absolute ISO timestamp — callers compute "in 30 min",
+ * "tomorrow", etc. themselves. Upserts by pageId — a page has at most one
  * reminder.
  */
 export async function setReminder(
   pageId: string,
   title: string,
   icon: string | null,
-  freq: ReminderFreq | null,
+  dueAt: string | null,
 ): Promise<void> {
   await init();
   const which = await backend();
 
-  if (freq === null) {
+  if (dueAt === null) {
     cache = cache.filter((r) => r.pageId !== pageId);
     if (which === "sql" && db) {
       await db.execute(
@@ -209,9 +213,15 @@ export async function setReminder(
 
   const existing = cache.find((r) => r.pageId === pageId);
   const id = existing?.id ?? uuid();
-  const nextDueAt = addPeriod(freq);
   const createdAt = nowIso();
-  const reminder: PageReminder = { id, pageId, title, icon, frequency: freq, nextDueAt };
+  const reminder: PageReminder = {
+    id,
+    pageId,
+    title,
+    icon,
+    frequency: "once",
+    nextDueAt: dueAt,
+  };
 
   cache = [...cache.filter((r) => r.pageId !== pageId), reminder];
 
@@ -224,7 +234,7 @@ export async function setReminder(
          icon_cache = excluded.icon_cache,
          frequency = excluded.frequency,
          next_due_at = excluded.next_due_at`,
-      [id, pageId, title, icon, freq, nextDueAt, createdAt],
+      [id, pageId, title, icon, "once", dueAt, createdAt],
     );
   } else if (local) {
     local = [...local.filter((r) => r.pageId !== pageId), reminder];
@@ -249,19 +259,33 @@ async function reschedule(id: string, nextDueAt: string): Promise<void> {
   notify();
 }
 
-/** Marks a reminder reviewed: reschedules one period out (stays recurring). */
-export async function completeReminder(id: string): Promise<void> {
-  const r = cache.find((x) => x.id === id);
-  if (!r) return;
-  await reschedule(id, addPeriod(r.frequency));
+async function remove(id: string): Promise<void> {
+  await init();
+  const which = await backend();
+  cache = cache.filter((r) => r.id !== id);
+  if (which === "sql" && db) {
+    await db.execute(`DELETE FROM page_reminder WHERE id = $1`, [id]);
+  } else if (local) {
+    local = local.filter((r) => r.id !== id);
+    persistLocal();
+  }
+  notify();
 }
 
-/** Pushes a reminder's due date out by one day without changing its cadence. */
+/** Marks a one-shot reminder reviewed: it's done, so it's deleted outright
+ * (no next occurrence to reschedule to). */
+export async function completeReminder(id: string): Promise<void> {
+  await remove(id);
+}
+
+/** Pushes a reminder's due time out by one hour. A short, fixed bump — a
+ * one-shot reminder snoozed by a full day would defeat the point of "in 30
+ * min"/"in 1 hour" durations. */
 export async function snoozeReminder(id: string): Promise<void> {
   const r = cache.find((x) => x.id === id);
   if (!r) return;
   const base = Math.max(Date.now(), new Date(r.nextDueAt).getTime());
-  await reschedule(id, new Date(base + DAY_MS).toISOString());
+  await reschedule(id, new Date(base + HOUR_MS).toISOString());
 }
 
 /** Test/dev seam only — not called from any UI. Forces an arbitrary

@@ -3,6 +3,7 @@ import { useAppStore } from "../store/appStore";
 import {
   completeReminder,
   dueReminders,
+  snoozeReminder,
   subscribeReminders,
 } from "../lib/reminders";
 import "../styles/reminders.css";
@@ -11,6 +12,8 @@ const MINUTE = 60 * 1000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
+/** Due reminders are, by construction, in the past — "due 12m ago", "due
+ * just now", etc. */
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   if (diff < MINUTE) return "just now";
@@ -21,7 +24,7 @@ function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
 
-/** "Review reminders" section: recurring-review due list, above the
+/** "Reminders" section: one-shot reminders that have come due, above the
  * comments/mentions inbox proper. */
 function ReminderSection() {
   const reminders = useSyncExternalStore(subscribeReminders, dueReminders);
@@ -31,7 +34,7 @@ function ReminderSection() {
 
   return (
     <div className="hive-reminder-section">
-      <div className="hive-reminder-head">Review reminders</div>
+      <div className="hive-reminder-head">Reminders</div>
       {reminders.map((r) => (
         <div key={r.id} className="hive-reminder-row">
           <span className="icon">{r.icon ?? "📄"}</span>
@@ -43,13 +46,18 @@ function ReminderSection() {
             }}
           >
             <span className="title">{r.title}</span>
-            <span className="meta">
-              review {r.frequency} · due {relativeTime(r.nextDueAt)}
-            </span>
+            <span className="meta">reminder · due {relativeTime(r.nextDueAt)}</span>
+          </button>
+          <button
+            className="snooze"
+            title="Snooze 1 hour"
+            onClick={() => void snoozeReminder(r.id)}
+          >
+            +1h
           </button>
           <button
             className="done"
-            title="Mark reviewed"
+            title="Mark done"
             onClick={() => void completeReminder(r.id)}
           >
             ✓ Done

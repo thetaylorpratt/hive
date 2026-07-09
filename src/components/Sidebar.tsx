@@ -6,6 +6,7 @@ import { useAppStore } from "../store/appStore";
 import { SpaceSwitcher } from "./SpaceSwitcher";
 import type { SidebarItem, Tier } from "../lib/orgDb";
 import { subscribeReminders, dueReminders } from "../lib/reminders";
+import { dlog } from "../lib/debugLog";
 
 /**
  * Per-Space sidebar: Favorites (icon row, transcend Spaces), Pinned,
@@ -20,23 +21,35 @@ const DRAG_MIME = "application/x-hive-item";
 
 // WebKit (the real Tauri WKWebView) has been observed to refuse drags that
 // carry only a custom MIME type — the drop's dataTransfer comes back empty
-// even though dragstart set it. Always also carry a "text/plain" fallback
-// and accept either form everywhere we read/check the payload.
+// even though dragstart set it. Worse, during dragover WKWebView can report
+// dataTransfer.types as UTI strings ("public.utf8-plain-text") rather than
+// MIME, so no string check on types is reliable. For drags that originate in
+// our own sidebar we don't need dataTransfer at all: dragstart records the
+// dragged item id module-side, and every check/read prefers that. dataTransfer
+// remains a fallback so nothing regresses in engines where it works.
 function hasDragPayload(e: React.DragEvent): boolean {
   return (
+    isDragging ||
     e.dataTransfer.types.includes(DRAG_MIME) ||
     e.dataTransfer.types.includes("text/plain")
   );
 }
 function getDraggedItemId(e: React.DragEvent): string {
-  return e.dataTransfer.getData(DRAG_MIME) || e.dataTransfer.getData("text/plain");
+  return (
+    e.dataTransfer.getData(DRAG_MIME) ||
+    e.dataTransfer.getData("text/plain") ||
+    draggedItemId ||
+    ""
+  );
 }
 
 // Suppress the hover-peek while a native HTML5 drag is in flight — mouseenter
 // on rows the drag passes over would otherwise race the drop, opening peek
 // panels mid-drag. Module-level because dragstart/dragend on one row must be
-// visible to onMouseEnter on every other row.
+// visible to onMouseEnter on every other row. draggedItemId doubles as the
+// payload for engines whose dataTransfer is unreliable (see above).
 let isDragging = false;
+let draggedItemId: string | null = null;
 
 /** Right-click menu for a sidebar row: move Space/folder, pin/star toggles,
  * remove. Portals to <body> — WebKit clips absolutely-positioned
@@ -199,6 +212,8 @@ function ItemRow({ item }: { item: SidebarItem }) {
       onDragStart={(e) => {
         closePeek();
         isDragging = true;
+        draggedItemId = item.id;
+        dlog(`drag start item=${item.id} title=${item.titleCache.slice(0, 20)}`);
         e.dataTransfer.setData(DRAG_MIME, item.id);
         // WebKit fallback: drags carrying only a custom MIME have been
         // observed to arrive at the drop target with an empty dataTransfer.
@@ -206,7 +221,9 @@ function ItemRow({ item }: { item: SidebarItem }) {
         e.dataTransfer.effectAllowed = "move";
       }}
       onDragEnd={() => {
+        dlog("drag end");
         isDragging = false;
+        draggedItemId = null;
       }}
       onClick={() => {
         closePeek();
@@ -355,6 +372,9 @@ function FolderBlock({
     <div
       className={`hive-folder${dropping ? " dropping" : ""}`}
       onDragEnter={(e) => {
+        dlog(
+          `folder dragenter ${name} payload=${hasDragPayload(e)} types=[${Array.from(e.dataTransfer.types).join(",")}]`,
+        );
         if (!hasDragPayload(e)) return;
         e.preventDefault();
       }}
@@ -376,6 +396,9 @@ function FolderBlock({
         setDropping(false);
       }}
       onDrop={(e) => {
+        dlog(
+          `folder drop ${name} payload=${hasDragPayload(e)} id=${getDraggedItemId(e) || "(none)"}`,
+        );
         if (!hasDragPayload(e)) return;
         e.preventDefault();
         // Nothing else should double-handle this drop (e.g. a TierList
@@ -384,11 +407,15 @@ function FolderBlock({
         setDropping(false);
         const draggedId = getDraggedItemId(e);
         const dragged = sidebarItems.find((i) => i.id === draggedId);
-        if (!dragged) return;
+        if (!dragged) {
+          dlog(`folder drop MISS: id=${draggedId} not in sidebarItems`);
+          return;
+        }
         void (async () => {
           // Folders live in the pinned section; filing implies pinning.
           if (dragged.tier !== "pinned") await setItemTier(draggedId, "pinned");
           await moveItemToFolder(draggedId, folderId);
+          dlog(`folder drop FILED ${draggedId} -> ${name}`);
         })();
       }}
     >

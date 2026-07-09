@@ -60,6 +60,7 @@
   font-size: 0.78rem;
 }
 
+.hive-reminder-row .snooze,
 .hive-reminder-row .done {
   flex-shrink: 0;
   font: inherit;
@@ -72,7 +73,70 @@
   padding: 4px 6px;
   border-radius: var(--hive-radius);
 }
+.hive-reminder-row .snooze:hover {
+  color: var(--hive-color-fg);
+  background: var(--hive-color-bg-subtle);
+}
 .hive-reminder-row .done:hover {
   color: var(--hive-color-success-fg);
   background: var(--hive-color-bg-subtle);
+}
+
+/* ---- Reminder group (inside the page ⋯ menu, .hive-page-menu) ---- */
+/* See PageMenu.tsx — durations replace the old daily/weekly/monthly items. */
+
+.hive-pm-remind-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px 2px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--hive-color-fg-muted);
+}
+
+.hive-pm-remind-status {
+  color: var(--hive-color-success-fg);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.hive-pm-remind-custom-row {
+  padding: 2px 8px;
+}
+
+.hive-pm-remind-custom-row input {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 5px 8px;
+  border: 1px solid var(--hive-color-border);
+  border-radius: var(--hive-radius);
+  background: var(--hive-color-bg-surface);
+  color: var(--hive-color-fg);
+}
+.hive-pm-remind-custom-row input:focus {
+  outline: none;
+  border-color: var(--hive-color-accent);
+}
+
+.hive-pm-remind-custom-row.shake {
+  animation: hive-remind-shake 320ms ease-in-out;
+}
+
+@keyframes hive-remind-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20%,
+  60% {
+    transform: translateX(-4px);
+  }
+  40%,
+  80% {
+    transform: translateX(4px);
+  }
 }
