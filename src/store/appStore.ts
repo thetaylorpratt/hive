@@ -425,6 +425,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       historyIndex = history.length - 1;
     }
     suppressHistory = false;
+    const samePage = get().pageId === pageId;
     set({
       pageId,
       page: cached,
@@ -433,7 +434,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       focusBlockId: null,
       writeError: null,
       searchView: null,
-      commentThreads: null,
+      // same-page refresh keeps the threads — nulling them unmounted every
+      // comment indicator and blanked the open panel until the reload
+      commentThreads: samePage ? get().commentThreads : null,
       breadcrumbs: [],
       displayPrefs: loadDisplayPrefs(pageId),
     });
@@ -944,6 +947,18 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
     if (writeback.hasPendingTextWrites()) return; // don't clobber unsent edits
+    // Never swap the doc out from under an active editing session — the
+    // full-page re-set redraws every block, and the remote "newer" edit is
+    // usually just OUR last write echoing back.
+    const active = document.activeElement as HTMLElement | null;
+    const sel = window.getSelection();
+    if (
+      active?.classList?.contains("hive-editable") ||
+      (sel?.anchorNode &&
+        (sel.anchorNode as HTMLElement).parentElement?.closest?.(".hive-editable"))
+    ) {
+      return;
+    }
     const now = Date.now();
     if (now - lastStaleCheck < 30_000) return; // one probe per 30s max
     lastStaleCheck = now;
@@ -1537,7 +1552,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 }));
 
-// Dev hook for driving the store from browser tooling.
-if (import.meta.env.DEV) {
-  (window as unknown as Record<string, unknown>).__hiveStore = useAppStore;
-}
+// Hook for driving the store from browser tooling. Exposed in release
+// builds too — local-only, and live debugging has already paid for itself.
+(window as unknown as Record<string, unknown>).__hiveStore = useAppStore;

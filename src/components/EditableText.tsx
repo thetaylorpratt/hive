@@ -307,6 +307,12 @@ export function EditableText({
   useEffect(() => {
     const el = ref.current;
     if (!el || document.activeElement === el || dirty.current) return;
+    // WKWebView can leave activeElement on <body> while the caret genuinely
+    // sits in this block (seen after updater relaunches) — rewriting the
+    // HTML then kills the caret on every render. Selection containment is
+    // the reliable "user is here" signal.
+    const sel = window.getSelection();
+    if (sel?.anchorNode && el.contains(sel.anchorNode)) return;
     const html = canonical(items);
     if (el.innerHTML !== html) el.innerHTML = html;
   });
@@ -568,7 +574,15 @@ export function EditableText({
           commit();
         }}
         onKeyDown={onKeyDown}
-        onMouseUp={updateToolbar}
+        onMouseUp={(e) => {
+          // WKWebView responder guard: a click can place the caret without
+          // moving activeElement off <body> — re-assert real focus so the
+          // sync guard and blur/commit lifecycle see this block as active.
+          if (document.activeElement !== e.currentTarget) {
+            e.currentTarget.focus({ preventScroll: true });
+          }
+          updateToolbar();
+        }}
         onKeyUp={(e) => {
           if (e.shiftKey || toolbar) updateToolbar();
         }}
