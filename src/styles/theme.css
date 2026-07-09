@@ -246,7 +246,9 @@ body {
   min-height: 1.2em;
   border-radius: var(--hive-radius-sm);
 }
-.hive-editable:empty::before {
+/* Placeholder shows only on the block you're actively in — empty lines
+   elsewhere stay blank once the page has content (Notion behavior). */
+.hive-editable:focus:empty::before {
   content: attr(data-placeholder);
   color: var(--hive-color-fg-muted);
   pointer-events: none;

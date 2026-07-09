@@ -293,6 +293,16 @@ export function remapBlockId(
   return mapTree(blocks, (b) => (b.id === fromId ? { ...b, id: toId } : b));
 }
 
+/** Remap many ids at once (table rebuild: table + every row). */
+export function remapIds(
+  blocks: HiveBlock[],
+  mapping: Map<string, string>,
+): HiveBlock[] {
+  return mapTree(blocks, (b) =>
+    mapping.has(b.id) ? { ...b, id: mapping.get(b.id)! } : b,
+  );
+}
+
 /** Fresh payload for a just-converted block type. */
 export function emptyPayload(type: string): Record<string, unknown> {
   switch (type) {
@@ -419,10 +429,11 @@ export async function setTableColumns(
   tableId: string,
   newWidth: number,
   sink: WriteSink,
-): Promise<WriteResult & { rebuilt: boolean }> {
-  if (newWidth < 1) return { blocks, remote: Promise.resolve(), rebuilt: false };
+): Promise<WriteResult & { remap?: Promise<Map<string, string> | null> }> {
+  if (newWidth < 1) return { blocks, remote: Promise.resolve() };
   let payload: { table_width: number; has_column_header?: boolean; has_row_header?: boolean } | null = null;
-  let rows: RichTextItem[][][] = [];
+  const localRowIds: string[] = [];
+  const rows: RichTextItem[][][] = [];
   const resize = (cells: RichTextItem[][]) =>
     Array.from({ length: newWidth }, (_, i) => cells[i] ?? []);
 
@@ -435,6 +446,7 @@ export async function setTableColumns(
           ((row.table_row as { cells?: RichTextItem[][] })?.cells) ?? [],
         );
         rows.push(cells);
+        localRowIds.push(row.id);
         return { ...row, table_row: { cells } };
       });
       return { ...b, table: payload as never, children };
@@ -443,34 +455,51 @@ export async function setTableColumns(
   });
   await persist(pageId, next);
 
-  const remote =
-    sink === "notion" && payload && !tableId.startsWith("local-")
-      ? enqueue(() =>
-          notion().blocks.children.append({
-            block_id: pageId,
-            after: tableId,
-            children: [
-              {
-                table: {
-                  ...payload,
-                  children: rows.map((cells) => ({
-                    table_row: {
-                      cells: cells.map((c) => toApiRichText(c)),
-                    },
-                  })),
-                },
-              } as never,
-            ],
-          }),
-        ).then(async () => {
-          await enqueue(() => notion().blocks.delete({ block_id: tableId }));
-        })
-      : Promise.resolve();
-  return {
-    blocks: next,
-    remote,
-    rebuilt: sink === "notion" && !tableId.startsWith("local-"),
-  };
+  // table_width is immutable on the API, so a column change means rebuild:
+  // append a fresh table then delete the old one. Two things that used to
+  // break this (duplicate table "at the bottom", lost edits): (1) the new
+  // table must go under the SAME parent as the original, not always the
+  // page; (2) resync must remap ids in place, never reload the whole page.
+  const canRebuild = sink === "notion" && payload && !tableId.startsWith("local-");
+  if (!canRebuild) return { blocks: next, remote: Promise.resolve() };
+
+  const parentId = findParentOf(blocks, tableId)?.id ?? pageId;
+  const remap = (async (): Promise<Map<string, string> | null> => {
+    const appended = (await enqueue(() =>
+      notion().blocks.children.append({
+        block_id: parentId,
+        after: tableId,
+        children: [
+          {
+            table: {
+              ...payload,
+              children: rows.map((cells) => ({
+                table_row: { cells: cells.map((c) => toApiRichText(c)) },
+              })),
+            },
+          } as never,
+        ],
+      }),
+    )) as { results?: { id?: string }[] };
+    const newTableId = appended.results?.[0]?.id;
+    if (!newTableId) return null;
+    // fetch the new row ids so cell edits target live blocks, not the
+    // just-deleted originals
+    const rowResp = (await enqueue(() =>
+      notion().blocks.children.list({ block_id: newTableId, page_size: 100 }),
+    )) as { results?: { id?: string }[] };
+    const newRowIds = (rowResp.results ?? []).map((r) => r.id).filter(Boolean) as string[];
+    // delete the original only AFTER the replacement is confirmed
+    await enqueue(() => notion().blocks.delete({ block_id: tableId }));
+    const mapping = new Map<string, string>();
+    mapping.set(tableId, newTableId);
+    localRowIds.forEach((id, i) => {
+      if (newRowIds[i]) mapping.set(id, newRowIds[i]);
+    });
+    return mapping;
+  })();
+
+  return { blocks: next, remote: remap.then(() => undefined), remap };
 }
 
 /** Duplicate a text-class block (or simple table) right below itself. */

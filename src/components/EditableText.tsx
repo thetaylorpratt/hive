@@ -648,7 +648,7 @@ export function EditableText({
       void insertParagraphAfter(block.id);
     } else if (e.key === "Backspace" && text.length === 0) {
       e.preventDefault();
-      void deleteBlock(block.id);
+      void deleteBlock(block.id, { focusPrevious: true, silent: true });
     } else if (e.key === "Escape") {
       ref.current?.blur();
     }

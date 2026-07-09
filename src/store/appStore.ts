@@ -211,7 +211,10 @@ interface AppState {
     newType: string,
     richText?: RichTextItem[],
   ) => Promise<void>;
-  deleteBlock: (blockId: string) => Promise<void>;
+  deleteBlock: (
+    blockId: string,
+    opts?: { focusPrevious?: boolean; silent?: boolean },
+  ) => Promise<void>;
   updatePageIcon: (emoji: string | null) => Promise<void>;
   updateTableCell: (
     rowId: string,
@@ -824,7 +827,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
-  deleteBlock: async (blockId) => {
+  deleteBlock: async (blockId, opts = {}) => {
     await chainWrite(async () => {
     const { pageId, page, auth } = get();
     if (!pageId || !page) return;
@@ -832,15 +835,24 @@ export const useAppStore = create<AppState>((set, get) => ({
     const captured = writeback.findWithPrev(page.blocks, blockId);
     const result = await writeback.deleteBlock(pageId, page.blocks, blockId, sink);
     if (get().pageId !== pageId) return;
-    set({ page: { ...page, blocks: result.blocks }, writeError: null });
+    // Merge-up like Notion: move the caret to the end of the previous block
+    // so typing continues seamlessly (no re-click needed).
+    const focusPrev = opts.focusPrevious && captured?.prevId ? captured.prevId : null;
+    set({
+      page: { ...page, blocks: result.blocks },
+      writeError: null,
+      ...(focusPrev ? { focusBlockId: focusPrev } : {}),
+    });
     result.remote.catch((err) =>
       set({ writeError: `Save failed: ${err instanceof Error ? err.message : err}` }),
     );
+    // Offer undo only for a deliberate delete of a block that still had
+    // content — a backspace on an empty line is silent (matches Notion).
     const hadText =
       captured &&
       ((captured.block[captured.block.type] as { rich_text?: unknown[] })
         ?.rich_text?.length ?? 0) > 0;
-    if (captured && hadText) {
+    if (captured && hadText && !opts.silent) {
       get().showToast("Block deleted", async () => {
         await chainWrite(async () => {
           const current = get();
@@ -913,16 +925,26 @@ export const useAppStore = create<AppState>((set, get) => ({
     );
     if (get().pageId !== pageId) return;
     set({ page: { ...page, blocks: result.blocks }, writeError: null });
-    void result.remote
-      .then(() => {
-        // The rebuild trick changes table/row ids — resync from Notion.
-        if (result.rebuilt && get().pageId === pageId) {
-          void get().openPage(pageId);
-        }
-      })
-      .catch((err) =>
-        set({ writeError: `Save failed: ${err instanceof Error ? err.message : err}` }),
-      );
+    // The rebuild assigns new table/row ids — remap them in the local tree
+    // (surgical) rather than reloading the page, which would discard any
+    // edits in flight on other blocks.
+    if (result.remap) {
+      void result.remap
+        .then((mapping) => {
+          if (!mapping || get().pageId !== pageId) return;
+          const current = get();
+          if (!current.page) return;
+          set({
+            page: {
+              ...current.page,
+              blocks: writeback.remapIds(current.page.blocks, mapping),
+            },
+          });
+        })
+        .catch((err) =>
+          set({ writeError: `Save failed: ${err instanceof Error ? err.message : err}` }),
+        );
+    }
     });
   },
 
