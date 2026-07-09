@@ -103,6 +103,23 @@ fn open_in_notion(page_id: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Append a line to ~/.hive/debug.log — live diagnostics for bugs that
+/// only reproduce in the packaged app (no devtools in release builds).
+#[tauri::command]
+fn append_debug_log(line: String) -> Result<(), String> {
+    use std::io::Write;
+    let home = std::env::var_os("HOME").ok_or("no HOME")?;
+    let dir = std::path::Path::new(&home).join(".hive");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(dir.join("debug.log"))
+        .map_err(|e| e.to_string())?;
+    writeln!(f, "{line}").map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Write a REST token obtained via in-app OAuth into ~/.hive/config.json
 /// (creating it if absent) so tokenless installs can self-serve auth.
 #[tauri::command]
@@ -291,7 +308,8 @@ pub fn run() {
             open_in_notion,
             save_mcp_auth,
             load_mcp_auth,
-            save_notion_token
+            save_notion_token,
+            append_debug_log
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

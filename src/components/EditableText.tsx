@@ -1,4 +1,5 @@
 import { useContext, useEffect, useRef, useState } from "react";
+import { dlog } from "../lib/debugLog";
 import { ReadOnlyContext } from "./BlockRenderer";
 import { useAppStore } from "../store/appStore";
 import { htmlToRichText, richTextToHtml } from "../lib/richTextHtml";
@@ -304,17 +305,24 @@ export function EditableText({
   // other direction: never sync FROM the model while the DOM holds
   // uncommitted edits (e.g. focus moved to the ⌘K popover before commit).
   const dirty = useRef(false);
+  // WebKit normalizes assigned HTML (quote entities, attribute order), so
+  // comparing el.innerHTML against our canonical string is ALWAYS unequal
+  // for some content — which rewrote those blocks on every render, killing
+  // any caret inside. Track what WE last synced instead.
+  const lastSynced = useRef<string | null>(null);
   useEffect(() => {
     const el = ref.current;
     if (!el || document.activeElement === el || dirty.current) return;
     // WKWebView can leave activeElement on <body> while the caret genuinely
-    // sits in this block (seen after updater relaunches) — rewriting the
-    // HTML then kills the caret on every render. Selection containment is
-    // the reliable "user is here" signal.
+    // sits in this block — selection containment is the reliable signal.
     const sel = window.getSelection();
     if (sel?.anchorNode && el.contains(sel.anchorNode)) return;
     const html = canonical(items);
-    if (el.innerHTML !== html) el.innerHTML = html;
+    if (lastSynced.current !== html) {
+      dlog(`SYNC-REWRITE #${block.id.slice(0, 8)} active=${document.activeElement?.nodeName}`);
+      el.innerHTML = html;
+      lastSynced.current = html;
+    }
   });
 
   // Focus requests: the paragraph just created by Enter, or this block
@@ -347,18 +355,19 @@ export function EditableText({
     return () => window.removeEventListener("hive-commit-block", onCommitRequest);
   }, [block.id]);
 
-  // Blocks with non-text runs (inline equations, mentions) keep the static
-  // renderer: the HTML round-trip would flatten them. Editing those blocks
-  // stays a native-Notion job in v1.
-  const hasExoticRuns = items.some((i) => i.type !== "text");
-  if (!canEdit || hasExoticRuns) return <RichText items={items} />;
+  // Non-text runs (mentions, equations) render as atomic chips inside the
+  // editable — richTextToHtml serializes them into data-exotic spans that
+  // htmlToRichText restores verbatim, so editing around them is safe.
+  if (!canEdit) return <RichText items={items} />;
 
   const commit = () => {
     const el = ref.current;
     if (!el) return;
     dirty.current = false;
     const parsed = htmlToRichText(el.innerHTML);
-    if (canonical(parsed) !== canonical(items)) {
+    const next = canonical(parsed);
+    if (next !== canonical(items)) {
+      lastSynced.current = next; // DOM already shows this — don't re-sync
       void editBlockText(block.id, block.type, parsed);
     }
   };

@@ -2002,6 +2002,17 @@ tr:hover .hive-row-gutter {
   color: var(--hive-color-fg-muted);
 }
 
+/* Atomic mention/equation chips inside editable blocks */
+.hive-exotic {
+  background: var(--hive-color-accent-subtle, var(--hive-color-bg-subtle));
+  color: var(--hive-color-accent);
+  border-radius: 4px;
+  padding: 0 3px;
+  font-weight: 500;
+  white-space: nowrap;
+  user-select: none;
+}
+
 /* Notion-style margin indicator on commented blocks */
 .hive-editable-wrap {
   position: relative;

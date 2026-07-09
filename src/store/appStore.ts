@@ -1003,6 +1003,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         remote.last_edited_time > loaded &&
         get().pageId === pageId
       ) {
+        const { dlog } = await import("../lib/debugLog");
+        dlog(`STALE-SWAP page=${pageId.slice(0, 8)} remote>${remote.last_edited_time}`);
         await get().openPage(pageId); // cache-first swap + diff banner
       }
     } catch {

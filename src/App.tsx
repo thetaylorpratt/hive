@@ -18,6 +18,7 @@ import { EmojiPicker } from "./components/EmojiPicker";
 import { OutlineRail } from "./components/OutlineRail";
 import { ShortcutSheet } from "./components/ShortcutSheet";
 import { installKeymap } from "./lib/keymap";
+import { installDebugTaps } from "./lib/debugLog";
 import { blocksToPlainText, pageEmoji, pageTitle } from "./lib/pageMeta";
 import { Glyph } from "./lib/iconSets";
 import { normalizePageId } from "./lib/fetchPage";
@@ -418,6 +419,7 @@ export default function App() {
 
   useEffect(() => {
     void init();
+    installDebugTaps();
   }, [init]);
 
   // URL routing (built-in Finicky). Hive handles hive:// deep links AND —
