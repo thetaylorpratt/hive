@@ -75,7 +75,6 @@ LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchSe
 for v in /Volumes/dmg.*; do
   [ -d "$v/Hive.app" ] && hdiutil detach "$v" -quiet 2>/dev/null || true
 done
-"$LSREGISTER" -u "$BUNDLE/macos/Hive.app" 2>/dev/null || true
 
 # Install the freshly-built app locally too, so a relaunch runs THIS build
 # rather than whatever the auto-updater last applied (they can lag).
@@ -83,7 +82,17 @@ pkill -x hive 2>/dev/null || true
 sleep 1
 rm -rf /Applications/Hive.app
 cp -R "$BUNDLE/macos/Hive.app" /Applications/
+
+# The DMG build mounts a volume LaunchServices registers, then unmounts it —
+# leaving a dead /Volumes registration that piles up and can make macOS
+# resolve the default-browser handler to a dead copy (→ links open in
+# Safari). A targeted unregister misses it (the volume is already gone), so
+# rebuild the whole LS database: it re-scans only real app locations, so
+# every stale /Volumes entry vanishes. Then /Applications/Hive.app is the
+# sole registration.
+"$LSREGISTER" -kill -r -domain local -domain system -domain user >/dev/null 2>&1 || true
 "$LSREGISTER" -f /Applications/Hive.app
-echo "==> Installed $VERSION to /Applications and reset LaunchServices"
+DUPES=$("$LSREGISTER" -dump 2>/dev/null | grep -ic "path:.*[Hh]ive\.app" || true)
+echo "==> Installed $VERSION to /Applications; Hive.app registrations: $DUPES (want 1)"
 
 echo "==> Done: https://github.com/thetaylorpratt/hive/releases/tag/$TAG"
