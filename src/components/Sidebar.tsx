@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Bell, PencilSimpleLine } from "@phosphor-icons/react";
+import { ArrowClockwise, Bell, PencilSimpleLine } from "@phosphor-icons/react";
 import { Glyph } from "../lib/iconSets";
 import { useAppStore } from "../store/appStore";
 import { SpaceSwitcher } from "./SpaceSwitcher";
@@ -454,7 +454,40 @@ export function Sidebar() {
         <TierList tier="today" items={today} emptyHint="open a doc to start" />
       </div>
       </div>
+      <VersionFooter />
       <SpaceSwitcher />
     </aside>
+  );
+}
+
+/** Version + manual update control (users asked to see their version and
+ * update on demand — the auto-check toast only appears when behind). */
+function VersionFooter() {
+  const version = useAppStore((s) => s.appVersion);
+  const state = useAppStore((s) => s.updateState);
+  const available = useAppStore((s) => s.availableVersion);
+  const checkForUpdates = useAppStore((s) => s.checkForUpdates);
+  const applyUpdate = useAppStore((s) => s.applyUpdate);
+
+  if (state === "available" && available) {
+    return (
+      <button
+        className="hive-version-footer update"
+        title={`Update Hive to ${available} and restart`}
+        onClick={() => void applyUpdate()}
+      >
+        <ArrowClockwise size={12} weight="bold" /> Update to {available} · restart
+      </button>
+    );
+  }
+  return (
+    <button
+      className="hive-version-footer"
+      title="Click to check for updates"
+      onClick={() => void checkForUpdates(true)}
+    >
+      Hive {version ? `v${version}` : "…"}
+      {state === "checking" ? " · checking…" : ""}
+    </button>
   );
 }

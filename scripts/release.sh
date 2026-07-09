@@ -76,6 +76,14 @@ for v in /Volumes/dmg.*; do
   [ -d "$v/Hive.app" ] && hdiutil detach "$v" -quiet 2>/dev/null || true
 done
 "$LSREGISTER" -u "$BUNDLE/macos/Hive.app" 2>/dev/null || true
-[ -d /Applications/Hive.app ] && "$LSREGISTER" -f /Applications/Hive.app || true
+
+# Install the freshly-built app locally too, so a relaunch runs THIS build
+# rather than whatever the auto-updater last applied (they can lag).
+pkill -x hive 2>/dev/null || true
+sleep 1
+rm -rf /Applications/Hive.app
+cp -R "$BUNDLE/macos/Hive.app" /Applications/
+"$LSREGISTER" -f /Applications/Hive.app
+echo "==> Installed $VERSION to /Applications and reset LaunchServices"
 
 echo "==> Done: https://github.com/thetaylorpratt/hive/releases/tag/$TAG"

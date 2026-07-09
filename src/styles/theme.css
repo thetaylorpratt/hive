@@ -2230,6 +2230,28 @@ tr:hover .hive-row-gutter {
   right: -3px;
 }
 
+.hive-version-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 100%;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 5px 8px;
+  font-size: 0.72rem;
+  color: var(--hive-color-fg-muted);
+}
+.hive-version-footer:hover {
+  color: var(--hive-color-fg-secondary);
+  background: var(--hive-color-bg-subtle);
+}
+.hive-version-footer.update {
+  color: var(--hive-color-accent);
+  font-weight: 500;
+}
+
 .hive-nav-btn.active {
   color: var(--hive-color-accent);
   background: var(--hive-color-bg-subtle);

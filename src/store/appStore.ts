@@ -182,6 +182,11 @@ interface AppState {
   mru: { pageId: string; title: string; icon: string | null }[];
   focusMode: boolean;
   toast: { message: string; undo?: () => Promise<void>; actionLabel?: string; sticky?: boolean } | null;
+  appVersion: string;
+  updateState: "idle" | "checking" | "current" | "available";
+  availableVersion: string | null;
+  checkForUpdates: (manual: boolean) => Promise<void>;
+  applyUpdate: () => Promise<void>;
   pageDiffs: Record<string, PageDiff>;
   shortcutSheetOpen: boolean;
   peek: { pageId: string; anchorY: number } | null;
@@ -349,6 +354,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   mru: [],
   focusMode: false,
   toast: null,
+  appVersion: "",
+  updateState: "idle",
+  availableVersion: null,
   pageDiffs: {},
   shortcutSheetOpen: false,
   peek: null,
@@ -391,18 +399,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (connected) set({ mcpStatus: "connected" });
     });
 
-    // Auto-update: check GitHub Releases once, a little after startup.
-    setTimeout(() => {
-      void import("../lib/updater").then((m) =>
-        m.checkForUpdate((version, install) => {
-          get().showToast(
-            `Hive ${version} is available`,
-            install,
-            { actionLabel: "Restart & update", sticky: true },
-          );
-        }),
-      );
-    }, 8000);
+    // Version badge + auto-update: read our version, then check the feed a
+    // little after startup (silent if current). The version footer lets the
+    // user see their version and re-check on demand.
+    void import("../lib/updater").then((m) =>
+      m.appVersion().then((v) => set({ appVersion: v })),
+    );
+    setTimeout(() => void get().checkForUpdates(false), 8000);
 
     // Content plane: Notion auth.
     let config;
@@ -950,6 +953,29 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   dismissToast: () => set({ toast: null }),
+
+  checkForUpdates: async (manual) => {
+    if (get().updateState === "checking") return;
+    set({ updateState: "checking" });
+    const m = await import("../lib/updater");
+    const version = await m.checkForUpdate();
+    if (version) {
+      set({ updateState: "available", availableVersion: version });
+    } else {
+      set({ updateState: "current", availableVersion: null });
+      // a manual check deserves acknowledgement; the auto one stays silent
+      if (manual) get().showToast(`You're on the latest version (${get().appVersion})`);
+    }
+  },
+
+  applyUpdate: async () => {
+    try {
+      get().showToast("Downloading update…");
+      await (await import("../lib/updater")).applyPendingUpdate();
+    } catch (err) {
+      get().showToast(`Update failed: ${err instanceof Error ? err.message : err}`);
+    }
+  },
 
   addTableRow: async (tableId, afterRowId) => {
     await applyWrite(get, set, (pageId, blocks, sink) =>
