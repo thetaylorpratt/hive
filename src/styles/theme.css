@@ -769,6 +769,60 @@ tr:hover .hive-row-gutter {
   padding-left: 1.5em;
 }
 
+/* ---- drag-to-move (Notion-style block reorder) ---- */
+
+.hive-toplevel-dnd {
+  position: relative;
+}
+
+.hive-toprow {
+  position: relative;
+}
+
+.hive-block-handle {
+  position: absolute;
+  left: -1.7em;
+  top: 0.2em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.2em;
+  height: 1.3em;
+  border-radius: 4px;
+  font-size: 0.8em;
+  line-height: 1;
+  color: var(--hive-color-fg-muted);
+  cursor: grab;
+  opacity: 0;
+  user-select: none;
+  transition: opacity 0.12s ease-in-out, background-color 0.12s ease-in-out;
+}
+.hive-toprow:hover .hive-block-handle {
+  opacity: 1;
+}
+.hive-block-handle:hover {
+  background: var(--hive-color-bg-surface);
+  color: var(--hive-color-fg-secondary);
+}
+.hive-block-handle:active {
+  cursor: grabbing;
+}
+
+.hive-block-dragging {
+  opacity: 0.4;
+}
+
+.hive-block-droptarget {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--hive-color-accent);
+  box-shadow: 0 0 0 3px var(--hive-color-accent-subtle);
+  pointer-events: none;
+}
+
 /* ---- chrome ---- */
 
 .hive-btn {

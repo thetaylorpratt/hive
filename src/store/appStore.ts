@@ -107,28 +107,42 @@ async function applyWrite(
     );
     // Recreate-trick ops give the block a new remote id: remap the local
     // tree and flush any buffered text once it settles.
-    if (result.remap) {
-      void result.remap
-        .then((mapping) => {
-          if (!mapping?.to) return;
-          requestCommit(mapping.from);
-          return chainWrite(async () => {
-            const current = get();
-            if (current.pageId !== pageId || !current.page) return;
-            writeback.flushPendingLocalText(mapping.from, mapping.to!);
-            const wasFocused = isBlockFocused(mapping.from);
-            set({
-              page: {
-                ...current.page,
-                blocks: writeback.remapBlockId(current.page.blocks, mapping.from, mapping.to!),
-              },
-              ...(wasFocused ? { focusBlockId: mapping.to } : {}),
-            });
-          });
-        })
-        .catch(() => undefined);
-    }
+    applyRecreateRemap(get, set, pageId, result.remap);
   });
+}
+
+/** Apply one recreate-trick id remap to the live tree once it settles: flush
+ * any text buffered at the old id, swap the id in the tree, and restore
+ * focus if the block was focused (a remap remounts the editor via its React
+ * key, which silently drops the caret mid-typing otherwise). Shared by every
+ * op whose remote write hands back a fresh id — moves, indent/outdent,
+ * drag-to-move (which can carry two remaps for the top-of-page case). */
+function applyRecreateRemap(
+  get: () => AppState,
+  set: (partial: Partial<AppState>) => void,
+  pageId: string,
+  remap?: Promise<writeback.RemapResult>,
+) {
+  if (!remap) return;
+  void remap
+    .then((mapping) => {
+      if (!mapping?.to) return;
+      requestCommit(mapping.from);
+      return chainWrite(async () => {
+        const current = get();
+        if (current.pageId !== pageId || !current.page) return;
+        writeback.flushPendingLocalText(mapping.from, mapping.to!);
+        const wasFocused = isBlockFocused(mapping.from);
+        set({
+          page: {
+            ...current.page,
+            blocks: writeback.remapBlockId(current.page.blocks, mapping.from, mapping.to!),
+          },
+          ...(wasFocused ? { focusBlockId: mapping.to } : {}),
+        });
+      });
+    })
+    .catch(() => undefined);
 }
 
 /** Apply a table-rebuild's id remap to the live tree (table + row ids),
@@ -312,6 +326,7 @@ interface AppState {
     patch: { has_column_header?: boolean; has_row_header?: boolean },
   ) => Promise<void>;
   moveBlock: (blockId: string, direction: "up" | "down") => Promise<void>;
+  dragMoveBlock: (blockId: string, afterId: string | null) => Promise<void>;
   indentBlock: (blockId: string) => Promise<void>;
   outdentBlock: (blockId: string) => Promise<void>;
   setFocusBlock: (blockId: string | null) => void;
@@ -1165,6 +1180,33 @@ export const useAppStore = create<AppState>((set, get) => ({
     await applyWrite(get, set, (pageId, blocks, sink) =>
       writeback.moveBlock(pageId, blocks, blockId, direction, sink),
     );
+  },
+  // Not routed through applyWrite: a top-of-page drop can carry TWO remaps
+  // (the dragged block's, and the displaced first block's — see
+  // writeback.moveBlockTo), and the offline throw needs to surface as a
+  // banner even though the drop handler that calls this doesn't await it.
+  dragMoveBlock: async (blockId, afterId) => {
+    try {
+      await chainWrite(async () => {
+        const { pageId, page, auth } = get();
+        if (!pageId || !page) return;
+        const sink = writeback.sinkFor(pageId, auth.status === "ready");
+        const result = await writeback.moveBlockTo(pageId, page.blocks, blockId, afterId, sink);
+        if (get().pageId !== pageId) return; // navigated away mid-write
+        set({ page: { ...page, blocks: result.blocks }, writeError: null });
+        result.remote.catch((err) =>
+          set({
+            writeError: `Save failed: ${err instanceof Error ? err.message : err}`,
+          }),
+        );
+        applyRecreateRemap(get, set, pageId, result.remap);
+        applyRecreateRemap(get, set, pageId, result.remap2);
+      });
+    } catch (err) {
+      set({
+        writeError: `Save failed: ${err instanceof Error ? err.message : err}`,
+      });
+    }
   },
   indentBlock: async (blockId) => {
     await applyWrite(get, set, (pageId, blocks, sink) =>

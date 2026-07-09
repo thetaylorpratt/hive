@@ -47,6 +47,7 @@ const TIPS: { keys?: string; text: string }[] = [
   { text: "⏰ Set a reminder on any page (⋯ menu) — in 30 min, tomorrow, next week, or a custom duration. It lands in your inbox." },
   { text: "A blue dot means the doc changed since you last read it — open it to see exactly what changed." },
   { keys: "⌘D", text: "Duplicate the current block. ⌘⌥1–8 converts block types. Tab indents list items." },
+  { keys: "⋮⋮", text: "Hover any line for the drag handle — grab it and drop the line wherever you want it, just like Notion." },
   { keys: "?", text: "See every keyboard shortcut on one sheet." },
   { text: "Click a Notion link anywhere on your Mac — it opens here. Everything else passes through to your browser." },
 ];

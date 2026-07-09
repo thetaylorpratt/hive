@@ -9,6 +9,7 @@ import { EditableText } from "./EditableText";
 import { FallbackCard } from "./FallbackCard";
 import { DatabaseView } from "./DatabaseView";
 import { useAppStore } from "../store/appStore";
+import { EDITABLE_TYPES } from "../lib/writeback";
 
 /**
  * Data-driven block renderer (ARCHITECTURE.md §5). One dispatch table keyed
@@ -25,6 +26,148 @@ type BlockComponent = (props: { block: HiveBlock }) => ReactNode;
 function rich(block: HiveBlock): RichTextItem[] {
   const payload = block[block.type] as { rich_text?: RichTextItem[] } | undefined;
   return payload?.rich_text ?? [];
+}
+
+/*
+ * Drag-to-move (Notion-style): top-level blocks only. Mirrors the sidebar's
+ * drag lessons (Sidebar.tsx) — WKWebView's dataTransfer is unreliable, so the
+ * dragged block's id lives module-side (isBlockDragging + draggedBlockId),
+ * and dataTransfer carries a custom MIME plus a text/plain fallback anyway.
+ * The dragend → "clear the drop line" handoff uses a window CustomEvent, the
+ * same idiom appStore.ts uses for requestCommit — the handle that starts the
+ * drag and the container that owns the drop-line state are different
+ * components with no direct reference to each other.
+ */
+const BLOCK_DRAG_MIME = "application/x-hive-block";
+let isBlockDragging = false;
+let draggedBlockId: string | null = null;
+
+/** Only text-class blocks with no children can be recreated elsewhere
+ * without dropping content — see writeback.moveBlockTo's own guard. */
+function isMovableBlock(block: HiveBlock): boolean {
+  return EDITABLE_TYPES.has(block.type) && !block.children?.length;
+}
+
+function DragHandle({ blockId }: { blockId: string }) {
+  return (
+    <span
+      className="hive-block-handle"
+      draggable
+      title="Drag to move"
+      onDragStart={(e) => {
+        isBlockDragging = true;
+        draggedBlockId = blockId;
+        e.dataTransfer.setData(BLOCK_DRAG_MIME, blockId);
+        // WebKit fallback: drags carrying only a custom MIME have been
+        // observed to arrive at the drop target with an empty dataTransfer.
+        e.dataTransfer.setData("text/plain", blockId);
+        e.dataTransfer.effectAllowed = "move";
+        e.currentTarget.closest<HTMLElement>("[data-block-id]")?.classList.add(
+          "hive-block-dragging",
+        );
+      }}
+      onDragEnd={(e) => {
+        isBlockDragging = false;
+        draggedBlockId = null;
+        e.currentTarget
+          .closest<HTMLElement>("[data-block-id]")
+          ?.classList.remove("hive-block-dragging");
+        window.dispatchEvent(new CustomEvent("hive-block-dragend"));
+      }}
+    >
+      ⋮⋮
+    </span>
+  );
+}
+
+/** Wraps one top-level block with its gutter drag handle (movable types
+ * only) and a stable data-block-id the container reads to compute drop
+ * gaps. Never wraps the contentEditable element itself or anything inside
+ * EditableText — this div sits alongside/around it, not inside it. */
+function TopRow({ block, children }: { block: HiveBlock; children: ReactNode }) {
+  return (
+    <div className="hive-toprow" data-block-id={block.id}>
+      {isMovableBlock(block) && <DragHandle blockId={block.id} />}
+      {children}
+    </div>
+  );
+}
+
+/** Container for the real, editable, top-level page tree: owns the
+ * dragover/drop choreography and the single drop-indicator line. Gated on
+ * canEdit + ReadOnlyContext exactly like EditableText itself, so preview/peek
+ * panes and read-only split views never activate it. */
+function TopLevelDropZone({ children }: { children: ReactNode }) {
+  const readOnly = useContext(ReadOnlyContext);
+  const canEdit = useAppStore((s) => s.canEdit()) && !readOnly;
+  const dragMoveBlock = useAppStore((s) => s.dragMoveBlock);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [gap, setGap] = useState<{ afterId: string | null; y: number } | null>(null);
+
+  useEffect(() => {
+    const clear = () => setGap(null);
+    window.addEventListener("hive-block-dragend", clear);
+    return () => window.removeEventListener("hive-block-dragend", clear);
+  }, []);
+
+  if (!canEdit) return <>{children}</>;
+
+  const computeGap = (clientY: number): { afterId: string | null; y: number } | null => {
+    const container = containerRef.current;
+    if (!container) return null;
+    const rows = Array.from(container.querySelectorAll<HTMLElement>("[data-block-id]"));
+    if (!rows.length) return null;
+    let idx = rows.findIndex(
+      (r) => clientY < r.getBoundingClientRect().top + r.getBoundingClientRect().height / 2,
+    );
+    if (idx === -1) idx = rows.length;
+    const draggedIdx = draggedBlockId
+      ? rows.findIndex((r) => r.dataset.blockId === draggedBlockId)
+      : -1;
+    // Adjacent to the dragged block itself on either side = identity move.
+    if (draggedIdx !== -1 && (idx === draggedIdx || idx === draggedIdx + 1)) {
+      return null;
+    }
+    const containerTop = container.getBoundingClientRect().top;
+    const afterId = idx === 0 ? null : (rows[idx - 1].dataset.blockId ?? null);
+    const y =
+      idx === 0
+        ? rows[0].getBoundingClientRect().top - containerTop
+        : rows[idx - 1].getBoundingClientRect().bottom - containerTop;
+    return { afterId, y };
+  };
+
+  return (
+    <div
+      ref={containerRef}
+      className="hive-toplevel-dnd"
+      onDragEnter={(e) => {
+        if (isBlockDragging) e.preventDefault();
+      }}
+      onDragOver={(e) => {
+        // Always preventDefault while a drag we started is in flight — do
+        // not trust dataTransfer.types (WKWebView reports UTI strings, not
+        // MIME, during dragover).
+        if (!isBlockDragging) return;
+        e.preventDefault();
+        setGap(computeGap(e.clientY));
+      }}
+      onDrop={(e) => {
+        if (!isBlockDragging) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const blockId = draggedBlockId;
+        const activeGap = gap;
+        setGap(null);
+        if (blockId && activeGap) {
+          void dragMoveBlock(blockId, activeGap.afterId);
+        }
+      }}
+    >
+      {children}
+      {gap && <div className="hive-block-droptarget" style={{ top: gap.y }} />}
+    </div>
+  );
 }
 
 function Children({ block }: { block: HiveBlock }) {
@@ -518,11 +661,22 @@ function SafeBlock({ block }: { block: HiveBlock }) {
 }
 
 /**
- * Renders a block sequence, grouping consecutive list items into real
- * <ul>/<ol> elements so numbered lists actually count.
+ * Builds a block sequence, grouping consecutive list items into real
+ * <ul>/<ol> elements so numbered lists actually count. When `topLevel`,
+ * every entry (including each item inside a grouped list) is wrapped in a
+ * TopRow so it can carry a drag handle and register itself for drop-gap
+ * detection.
  */
-export function BlockList({ blocks }: { blocks: HiveBlock[] }) {
+function buildBlockNodes(blocks: HiveBlock[], topLevel: boolean): ReactNode[] {
   const out: ReactNode[] = [];
+  const renderOne = (b: HiveBlock) =>
+    topLevel ? (
+      <TopRow key={b.id} block={b}>
+        <SafeBlock block={b} />
+      </TopRow>
+    ) : (
+      <SafeBlock key={b.id} block={b} />
+    );
   let i = 0;
   while (i < blocks.length) {
     const type = blocks[i].type;
@@ -532,7 +686,7 @@ export function BlockList({ blocks }: { blocks: HiveBlock[] }) {
         group.push(blocks[i]);
         i += 1;
       }
-      const items = group.map((b) => <SafeBlock key={b.id} block={b} />);
+      const items = group.map((b) => renderOne(b));
       out.push(
         type === "numbered_list_item" ? (
           <ol key={group[0].id}>{items}</ol>
@@ -541,9 +695,31 @@ export function BlockList({ blocks }: { blocks: HiveBlock[] }) {
         ),
       );
     } else {
-      out.push(<SafeBlock key={blocks[i].id} block={blocks[i]} />);
+      out.push(renderOne(blocks[i]));
       i += 1;
     }
   }
-  return <>{out}</>;
+  return out;
+}
+
+/**
+ * Renders a block sequence. Drag-to-move only activates for the real,
+ * editable page tree (App.tsx's own top-level `<BlockList blocks={page.blocks} />`
+ * call) — everything else (Children, toggle bodies, columns, the peek
+ * preview, split-pane) must never get a handle, since dragMoveBlock mutates
+ * the currently *open* page's top-level block array specifically.
+ *
+ * There's no `topLevel` prop to flip: App.tsx, PeekLayer.tsx and SplitPane.tsx
+ * are outside this component's file, so instead this detects "is this
+ * literally the live open page's block array" by reference — `page.blocks`
+ * is the exact array App.tsx passes down un-cloned, while every other
+ * caller (nested children/toggle/column arrays, the peek's `.slice()` copy,
+ * split-pane's independently-fetched data) can never be `===` to it.
+ */
+export function BlockList({ blocks }: { blocks: HiveBlock[] }) {
+  const livePageBlocks = useAppStore((s) => s.page?.blocks);
+  const topLevel = blocks === livePageBlocks;
+  const out = buildBlockNodes(blocks, topLevel);
+  if (!topLevel) return <>{out}</>;
+  return <TopLevelDropZone>{out}</TopLevelDropZone>;
 }

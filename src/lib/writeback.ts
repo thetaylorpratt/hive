@@ -786,6 +786,136 @@ export async function moveBlock(
 }
 
 /**
+ * Drag-to-move: relocate a top-level block to an arbitrary position in one
+ * step (vs. moveBlock's one-slot-at-a-time swap), via the same recreate
+ * trick. `afterId: null` means "drop at the very top" — the API can only
+ * append, never prepend, so that case needs a two-recreate dance: recreate
+ * the dragged block (X) after the current first block (F), delete old X,
+ * then recreate F after X's new id and delete old F. Every other drop is a
+ * single recreate+delete, same shape as moveBlock.
+ */
+export async function moveBlockTo(
+  pageId: string,
+  blocks: HiveBlock[],
+  blockId: string,
+  afterId: string | null,
+  sink: WriteSink,
+): Promise<
+  WriteResult & { remap?: Promise<RemapResult>; remap2?: Promise<RemapResult> }
+> {
+  if (isWriteOffline()) throw new Error(OFFLINE_BLOCKED_MESSAGE);
+  const index = blocks.findIndex((b) => b.id === blockId);
+  if (index === -1 || afterId === blockId) {
+    return { blocks, remote: Promise.resolve() }; // not top-level, or no-op
+  }
+  const moving = blocks[index];
+  if (moving.children?.length || !EDITABLE_TYPES.has(moving.type)) {
+    // Recreate would drop the subtree, or the type has no safe recreate
+    // payload — refuse rather than let local and remote diverge.
+    return { blocks, remote: Promise.resolve() };
+  }
+  const afterIndex = afterId === null ? -1 : blocks.findIndex((b) => b.id === afterId);
+  if (afterId !== null && afterIndex === -1) {
+    return { blocks, remote: Promise.resolve() }; // afterId not a top-level sibling
+  }
+  // Identity move: already directly after afterId, or already first.
+  if (afterId === null ? index === 0 : blocks[index - 1]?.id === afterId) {
+    return { blocks, remote: Promise.resolve() };
+  }
+
+  if (afterId !== null) {
+    // General case: single recreate, same shape as moveBlock.
+    cancelPendingTextWrite(blockId);
+    const withoutMoved = blocks.filter((b) => b.id !== blockId);
+    const insertAt = withoutMoved.findIndex((b) => b.id === afterId);
+    const next = [...withoutMoved];
+    next.splice(insertAt + 1, 0, moving);
+    await persist(pageId, next);
+
+    const payload = apiPayloadFor(moving);
+    const remote =
+      sink === "notion" && payload && !blockId.startsWith("local-") && !afterId.startsWith("local-")
+        ? enqueue(() =>
+            notion().blocks.children.append({
+              block_id: pageId,
+              after: afterId,
+              children: [payload as never],
+            }),
+          ).then(async (resp) => {
+            await enqueue(() => notion().blocks.delete({ block_id: blockId }));
+            return {
+              from: blockId,
+              to: (resp as { results?: { id?: string }[] }).results?.[0]?.id ?? null,
+            };
+          })
+        : Promise.resolve(null);
+    return { blocks: next, remote: remote.then(() => undefined), remap: remote };
+  }
+
+  // Drop at the very top.
+  const first = blocks[0];
+  if (first.children?.length || !EDITABLE_TYPES.has(first.type)) {
+    // Can't safely recreate the block either half of this dance needs to
+    // touch — refuse the whole top-drop rather than leave it half-done.
+    return { blocks, remote: Promise.resolve() };
+  }
+  cancelPendingTextWrite(blockId);
+  cancelPendingTextWrite(first.id);
+  const rest = blocks.filter((b) => b.id !== blockId && b.id !== first.id);
+  const next = [moving, first, ...rest];
+  await persist(pageId, next);
+
+  const xPayload = apiPayloadFor(moving);
+  const fPayload = apiPayloadFor(first);
+  const canRemote =
+    sink === "notion" &&
+    !!xPayload &&
+    !!fPayload &&
+    !blockId.startsWith("local-") &&
+    !first.id.startsWith("local-");
+
+  let remap: Promise<RemapResult> = Promise.resolve(null);
+  let remap2: Promise<RemapResult> = Promise.resolve(null);
+  let remote: Promise<void> = Promise.resolve();
+
+  if (canRemote) {
+    remap = enqueue(() =>
+      notion().blocks.children.append({
+        block_id: pageId,
+        after: first.id,
+        children: [xPayload as never],
+      }),
+    ).then(async (resp) => {
+      const newXId = (resp as { results?: { id?: string }[] }).results?.[0]?.id ?? null;
+      await enqueue(() => notion().blocks.delete({ block_id: blockId }));
+      return { from: blockId, to: newXId };
+    });
+
+    // F can only be recreated after X's real id lands — chained off remap,
+    // so an X failure short-circuits F too rather than leaving it stranded.
+    remap2 = remap.then(async (xMapping) => {
+      if (!xMapping || !xMapping.to) return null;
+      const resp = await enqueue(() =>
+        notion().blocks.children.append({
+          block_id: pageId,
+          after: xMapping.to as string,
+          children: [fPayload as never],
+        }),
+      );
+      await enqueue(() => notion().blocks.delete({ block_id: first.id }));
+      return {
+        from: first.id,
+        to: (resp as { results?: { id?: string }[] }).results?.[0]?.id ?? null,
+      };
+    });
+
+    remote = Promise.all([remap, remap2]).then(() => undefined);
+  }
+
+  return { blocks: next, remote, remap, remap2 };
+}
+
+/**
  * Indent: re-home the block as the last child of its previous sibling.
  * Outdent: lift a nested block to sit after its parent. Both use the
  * recreate trick on the notion sink (id changes; children not carried).
