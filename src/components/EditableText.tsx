@@ -441,8 +441,18 @@ export function EditableText({
     if (!el || document.activeElement === el || dirty.current) return;
     // WKWebView can leave activeElement on <body> while the caret genuinely
     // sits in this block — selection containment is the reliable signal.
+    // It can also anchor the caret on the WRAPPER span (parent of the
+    // editable div), not inside it; el.contains() misses that and a
+    // re-render then wipes the block mid-typing (the "bullets disappear"
+    // report). Check the wrapper too.
     const sel = window.getSelection();
-    if (sel?.anchorNode && el.contains(sel.anchorNode)) return;
+    const wrap = el.parentElement; // .hive-editable-wrap
+    if (
+      sel?.anchorNode &&
+      (el.contains(sel.anchorNode) || wrap?.contains(sel.anchorNode))
+    ) {
+      return;
+    }
     const html = canonical(items);
     if (lastSynced.current !== html) {
       dlog(`SYNC-REWRITE #${block.id.slice(0, 8)} active=${document.activeElement?.nodeName}`);
@@ -803,6 +813,10 @@ export function EditableText({
         }}
         onKeyDown={onKeyDown}
         onMouseUp={(e) => {
+          // A shift+click or click-drag range-select (src/lib/keymap.ts)
+          // already blurred us and set a block selection on this same
+          // mouseup — don't fight it by re-focusing and dropping a caret.
+          if (useAppStore.getState().selectedBlockIds) return;
           // WKWebView responder guard: a click can place the caret without
           // moving activeElement off <body>. Re-assert focus so the sync
           // guard and blur/commit lifecycle see this block as active — but

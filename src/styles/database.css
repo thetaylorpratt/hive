@@ -77,7 +77,10 @@
 }
 .hive-db-table {
   border-collapse: collapse;
-  width: 100%;
+  /* grow to content so many columns overflow the wrap (→ horizontal
+     scroll) instead of compressing to fit; fill the wrap when few. */
+  width: max-content;
+  min-width: 100%;
   font-size: 0.85rem;
 }
 .hive-db-table th,
@@ -88,6 +91,7 @@
   text-align: left;
   vertical-align: middle;
   white-space: nowrap;
+  min-width: 120px;
   max-width: 320px;
   overflow: hidden;
   text-overflow: ellipsis;

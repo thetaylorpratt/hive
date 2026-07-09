@@ -101,6 +101,56 @@ export const COLUMN_TYPE_META: Record<string, { label: string }> = {
 
 const PAGE_SIZE = 50;
 
+/* ---------- demo fixture (DEMO_DB_ID) — driveable grid without a token ----
+ * Every exported function short-circuits to this in-memory store when it
+ * sees the demo id, so the whole DB UI is exercisable in preview. Writes
+ * mutate the store and resolve, like a real backend round-trip. */
+const DEMO_DB_ID = "00000000-0000-0000-0000-0000000000db";
+
+const demoStore: { schema: DbSchema; rows: DbRow[] } = {
+  schema: {
+    databaseId: DEMO_DB_ID,
+    dataSourceId: "demo-ds",
+    title: "Roadmap (demo database)",
+    icon: "🗺️",
+    titleColumnName: "Name",
+    columns: [
+      { id: "c-name", name: "Name", type: "title" },
+      { id: "c-status", name: "Status", type: "select", options: [
+        { id: "o1", name: "Not started", color: "gray" },
+        { id: "o2", name: "In progress", color: "blue" },
+        { id: "o3", name: "Done", color: "green" },
+      ] },
+      { id: "c-tags", name: "Tags", type: "multi_select", options: [
+        { id: "t1", name: "frontend", color: "purple" },
+        { id: "t2", name: "backend", color: "orange" },
+      ] },
+      { id: "c-due", name: "Due", type: "date" },
+      { id: "c-done", name: "Shipped", type: "checkbox" },
+      { id: "c-notes", name: "Notes", type: "rich_text" },
+    ],
+  },
+  rows: [
+    { pageId: "demo-row-1", icon: null, properties: {
+      Name: { type: "title", title: [{ plain_text: "Editor parity" }] },
+      Status: { type: "select", select: { name: "In progress", color: "blue" } },
+      Tags: { type: "multi_select", multi_select: [{ name: "frontend" }] },
+      Due: { type: "date", date: { start: "2026-07-15" } },
+      Shipped: { type: "checkbox", checkbox: false },
+      Notes: { type: "rich_text", rich_text: [{ plain_text: "cell editing" }] },
+    } },
+    { pageId: "demo-row-2", icon: null, properties: {
+      Name: { type: "title", title: [{ plain_text: "Database view" }] },
+      Status: { type: "select", select: { name: "Done", color: "green" } },
+      Tags: { type: "multi_select", multi_select: [{ name: "frontend" }, { name: "backend" }] },
+      Due: { type: "date", date: { start: "2026-07-09" } },
+      Shipped: { type: "checkbox", checkbox: true },
+      Notes: { type: "rich_text", rich_text: [] },
+    } },
+  ],
+};
+const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
+
 /* ---------- read-only rendering ---------- */
 
 export function propertyToText(value: unknown): string {
@@ -213,6 +263,9 @@ function toRow(page: unknown): DbRow {
 /* ---------- reads ---------- */
 
 export async function fetchDatabase(databaseId: string): Promise<DbData> {
+  if (databaseId === DEMO_DB_ID) {
+    return { schema: clone(demoStore.schema), rows: clone(demoStore.rows), hasMore: false, cursor: null };
+  }
   const db = (await enqueue(() =>
     notion().databases.retrieve({ database_id: databaseId } as never),
   )) as {
@@ -267,6 +320,7 @@ export async function fetchMoreRows(
   schema: DbSchema,
   cursor: string,
 ): Promise<{ rows: DbRow[]; hasMore: boolean; cursor: string | null }> {
+  if (schema.databaseId === DEMO_DB_ID) return { rows: [], hasMore: false, cursor: null };
   const query = (await enqueue(() =>
     notion().dataSources.query({
       data_source_id: schema.dataSourceId,
@@ -312,6 +366,11 @@ export async function updateRowProperty(
   column: DbColumn,
   draft: PropertyDraft,
 ): Promise<void> {
+  if (pageId.startsWith("demo-row-")) {
+    const row = demoStore.rows.find((r) => r.pageId === pageId);
+    if (row) row.properties[column.name] = { type: column.type, ...draftToPayload(column, draft) };
+    return;
+  }
   await enqueue(() =>
     notion().pages.update({
       page_id: pageId,
@@ -321,6 +380,15 @@ export async function updateRowProperty(
 }
 
 export async function createRow(schema: DbSchema, title: string): Promise<DbRow> {
+  if (schema.databaseId === DEMO_DB_ID) {
+    const row: DbRow = {
+      pageId: `demo-row-${demoStore.rows.length + 1}-${Math.round(performance.now())}`,
+      icon: null,
+      properties: { [schema.titleColumnName]: { type: "title", title: title ? [{ plain_text: title }] : [] } },
+    };
+    demoStore.rows.push(clone(row));
+    return row;
+  }
   const page = await enqueue(() =>
     notion().pages.create({
       parent: { type: "data_source_id", data_source_id: schema.dataSourceId },
@@ -335,6 +403,10 @@ export async function createRow(schema: DbSchema, title: string): Promise<DbRow>
 }
 
 export async function archiveRow(pageId: string): Promise<void> {
+  if (pageId.startsWith("demo-row-")) {
+    demoStore.rows = demoStore.rows.filter((r) => r.pageId !== pageId);
+    return;
+  }
   await enqueue(() => notion().pages.update({ page_id: pageId, archived: true } as never));
 }
 
@@ -365,6 +437,10 @@ export async function createInlineDatabase(parentPageId: string, title: string):
 }
 
 export async function addColumn(schema: DbSchema, name: string, type: string): Promise<void> {
+  if (schema.databaseId === DEMO_DB_ID) {
+    demoStore.schema.columns.push({ id: `c-${name}`, name, type, options: [] });
+    return;
+  }
   await enqueue(() =>
     notion().dataSources.update({
       data_source_id: schema.dataSourceId,
@@ -378,6 +454,13 @@ export async function addSelectOption(
   column: DbColumn,
   optionName: string,
 ): Promise<void> {
+  if (schema.databaseId === DEMO_DB_ID) {
+    const col = demoStore.schema.columns.find((c) => c.id === column.id);
+    if (col && !(col.options ?? []).some((o) => o.name === optionName)) {
+      col.options = [...(col.options ?? []), { name: optionName }];
+    }
+    return;
+  }
   // status/select/multi_select options all live under a key matching the
   // column's own type — fetch fresh so a concurrent edit isn't clobbered.
   const ds = (await enqueue(() =>
@@ -405,6 +488,11 @@ export async function deleteSelectOption(
   // status options can't be deleted via API — callers must never invoke this
   // for a status column (enforced in the UI, not offered there either).
   if (column.type === "status") return;
+  if (schema.databaseId === DEMO_DB_ID) {
+    const col = demoStore.schema.columns.find((c) => c.id === column.id);
+    if (col) col.options = (col.options ?? []).filter((o) => o.name !== optionName);
+    return;
+  }
 
   const ds = (await enqueue(() =>
     notion().dataSources.retrieve({ data_source_id: schema.dataSourceId } as never),
@@ -433,6 +521,7 @@ export async function renameDatabase(
   dataSourceId: string,
   title: string,
 ): Promise<void> {
+  if (databaseId === DEMO_DB_ID) { demoStore.schema.title = title; return; }
   await enqueue(() =>
     notion().databases.update({
       database_id: databaseId,
@@ -452,6 +541,19 @@ export async function renameColumn(
   column: DbColumn,
   newName: string,
 ): Promise<void> {
+  if (schema.databaseId === DEMO_DB_ID) {
+    const col = demoStore.schema.columns.find((c) => c.id === column.id);
+    if (col) {
+      demoStore.rows.forEach((r) => {
+        if (r.properties[column.name] !== undefined) {
+          r.properties[newName] = r.properties[column.name];
+          delete r.properties[column.name];
+        }
+      });
+      col.name = newName;
+    }
+    return;
+  }
   await enqueue(() =>
     notion().dataSources.update({
       data_source_id: schema.dataSourceId,
@@ -465,6 +567,16 @@ export async function changeColumnType(
   column: DbColumn,
   newType: string,
 ): Promise<void> {
+  if (schema.databaseId === DEMO_DB_ID) {
+    const col = demoStore.schema.columns.find((c) => c.id === column.id);
+    if (col) {
+      col.type = newType;
+      if ((newType === "select" || newType === "multi_select" || newType === "status") && !col.options) {
+        col.options = [];
+      }
+    }
+    return;
+  }
   await enqueue(() =>
     notion().dataSources.update({
       data_source_id: schema.dataSourceId,
@@ -474,6 +586,10 @@ export async function changeColumnType(
 }
 
 export async function deleteColumn(schema: DbSchema, column: DbColumn): Promise<void> {
+  if (schema.databaseId === DEMO_DB_ID) {
+    demoStore.schema.columns = demoStore.schema.columns.filter((c) => c.id !== column.id);
+    return;
+  }
   await enqueue(() =>
     notion().dataSources.update({
       data_source_id: schema.dataSourceId,

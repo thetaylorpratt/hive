@@ -8,6 +8,10 @@ import type { HiveBlock, RichTextItem } from "./types";
  */
 
 export const DEMO_PAGE_ID = "00000000-0000-0000-0000-00000000demo";
+/** Sentinel child_database id: databaseApi serves a static in-memory table
+ * for it (no token), so the grid is fully driveable in preview — the test
+ * harness for every database interaction. */
+export const DEMO_DB_ID = "00000000-0000-0000-0000-0000000000db";
 
 /** Bump when the fixture changes so cached (possibly edited) copies re-seed. */
 export const DEMO_VERSION = "6-toggle-heading";
@@ -228,7 +232,7 @@ export const demoBlocks: HiveBlock[] = [
       ),
     ],
   }),
-  block("child_database", { title: "Roadmap (linked database)" }),
+  { id: DEMO_DB_ID, type: "child_database", has_children: false, child_database: { title: "Roadmap (demo database)" } },
   block("synced_block", {}),
   block(
     "heading_3",

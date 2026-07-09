@@ -120,11 +120,82 @@ function plainTextFor(ids: string[]): string {
   return lines.join("\n");
 }
 
+// Mouse-driven range selection (shift+click and click-drag), layered onto
+// the ⌘A-escalated block selection below. Module-level so it survives
+// across blur/focus and doesn't need React state.
+let lastFocusedBlockId: string | null = null;
+/** Sticks across repeated shift+clicks (and once a drag starts) so a second
+ * shift+click extends from the ORIGINAL anchor, not the previous target. */
+let selectionAnchorId: string | null = null;
+let dragAnchorId: string | null = null;
+let dragStartX = 0;
+let dragStartY = 0;
+let dragActive = false;
+const DRAG_THRESHOLD_SQ = 6 * 6; // px, squared — a real drag, not a click's jitter
+
+/** The block currently focused, or the last one that was (survives blur —
+ * e.g. after the ⌘A escalation, or once a selection has taken focus away). */
+function currentlyFocusedBlockId(): string | null {
+  const el = document.activeElement as HTMLElement | null;
+  if (el && el.classList.contains("hive-editable") && el.dataset.bid) {
+    return el.dataset.bid;
+  }
+  return lastFocusedBlockId;
+}
+
+/** Inclusive slice of selectableBlockIds() between two ids, order-agnostic.
+ * Null if either id isn't a top-level selectable block (v1 scope). */
+function rangeFromIds(ids: string[], anchorId: string, currentId: string): string[] | null {
+  const a = ids.indexOf(anchorId);
+  const b = ids.indexOf(currentId);
+  if (a === -1 || b === -1) return null;
+  const lo = Math.min(a, b);
+  const hi = Math.max(a, b);
+  return ids.slice(lo, hi + 1);
+}
+
+function blockIdAtPoint(x: number, y: number): string | null {
+  const el = document.elementFromPoint(x, y) as HTMLElement | null;
+  return el?.closest<HTMLElement>(".hive-editable")?.dataset.bid ?? null;
+}
+
+function onDragMouseMove(e: MouseEvent) {
+  if (!dragAnchorId) return;
+  const currentId = blockIdAtPoint(e.clientX, e.clientY);
+  if (!dragActive) {
+    const dx = e.clientX - dragStartX;
+    const dy = e.clientY - dragStartY;
+    if (dx * dx + dy * dy < DRAG_THRESHOLD_SQ) return; // hasn't moved enough yet
+    if (!currentId || currentId === dragAnchorId) return; // still inside the anchor block
+    const range = rangeFromIds(selectableBlockIds(), dragAnchorId, currentId);
+    if (!range) return; // anchor isn't a top-level selectable block — not our v1 scope
+    dragActive = true;
+    selectionAnchorId = dragAnchorId;
+    window.getSelection()?.removeAllRanges(); // drop whatever text-selection had started
+    (document.activeElement as HTMLElement | null)?.blur();
+    useAppStore.getState().setBlockSelection(range);
+    e.preventDefault();
+    return;
+  }
+  e.preventDefault();
+  if (!currentId) return; // pointer between blocks — keep the last computed range
+  const range = rangeFromIds(selectableBlockIds(), dragAnchorId, currentId);
+  if (range) useAppStore.getState().setBlockSelection(range);
+}
+
+function onDragMouseUp() {
+  document.removeEventListener("mousemove", onDragMouseMove);
+  document.removeEventListener("mouseup", onDragMouseUp);
+  dragAnchorId = null;
+  dragActive = false;
+}
+
 /**
- * Block multi-selection v1 (H): once `selectedBlockIds` is set (escalated
- * from EditableText's double-⌘A, see there), focus has been blurred out of
- * any editable — these global handlers own Escape/Backspace/⌘C/⌘A while a
- * selection is active, and clear it on any other keystroke or click.
+ * Block multi-selection v1 (H): once `selectedBlockIds` is set — escalated
+ * from EditableText's double-⌘A, or from a shift+click / click-drag range
+ * below — focus has been blurred out of any editable — these global
+ * handlers own Escape/Backspace/⌘C/⌘A while a selection is active, and
+ * clear it on any other keystroke or click.
  */
 function installSelectionKeymap(): () => void {
   const onKeyDown = (e: KeyboardEvent) => {
@@ -134,11 +205,13 @@ function installSelectionKeymap(): () => void {
     if (s.selectedBlockIds && s.selectedBlockIds.length > 0) {
       if (e.key === "Escape") {
         e.preventDefault();
+        selectionAnchorId = null;
         s.setBlockSelection(null);
         return;
       }
       if (e.key === "Backspace" || e.key === "Delete") {
         e.preventDefault();
+        selectionAnchorId = null;
         void s.deleteSelectedBlocks();
         return;
       }
@@ -154,6 +227,7 @@ function installSelectionKeymap(): () => void {
       }
       // any other character key drops the selection (typing starts fresh)
       if (!meta && !e.altKey && e.key.length === 1) {
+        selectionAnchorId = null;
         s.setBlockSelection(null);
       }
       return;
@@ -168,14 +242,66 @@ function installSelectionKeymap(): () => void {
       s.setBlockSelection(ids);
     }
   };
-  const onMouseDown = () => {
-    const s = useAppStore.getState();
-    if (s.selectedBlockIds) s.setBlockSelection(null);
+
+  const onFocusIn = (e: FocusEvent) => {
+    const el = e.target as HTMLElement | null;
+    if (el?.classList.contains("hive-editable") && el.dataset.bid) {
+      lastFocusedBlockId = el.dataset.bid;
+    }
   };
+
+  const onMouseDown = (e: MouseEvent) => {
+    const target = e.target as HTMLElement | null;
+    const editable = target?.closest<HTMLElement>(".hive-editable");
+    const blockId = editable?.dataset.bid ?? null;
+
+    // Shift+click: extend a range from the sticky anchor (or the
+    // currently/last-focused block) to the clicked block, inclusive.
+    if (blockId && e.shiftKey && e.button === 0 && !e.metaKey && !e.altKey) {
+      const ids = selectableBlockIds();
+      const anchor = [selectionAnchorId, currentlyFocusedBlockId(), blockId].find(
+        (id): id is string => !!id && ids.includes(id),
+      );
+      const range = anchor ? rangeFromIds(ids, anchor, blockId) : null;
+      if (range) {
+        e.preventDefault(); // select the block, don't place/extend a text caret
+        selectionAnchorId = anchor!;
+        (document.activeElement as HTMLElement | null)?.blur();
+        useAppStore.getState().setBlockSelection(range);
+        return;
+      }
+      // blockId isn't a top-level selectable block (nested) — fall through
+      // to plain-click handling below, which still drops a stale selection
+      // but lets the native shift+click text-selection happen.
+    }
+
+    const s = useAppStore.getState();
+    if (s.selectedBlockIds) {
+      s.setBlockSelection(null);
+      selectionAnchorId = null;
+    }
+
+    // Click-drag range-select: record the anchor now; promotion to a block
+    // selection happens in onDragMouseMove once the pointer crosses into a
+    // different block past a small threshold. A drag that never leaves the
+    // anchor block is left alone — that's normal in-block text selection.
+    if (blockId && !e.shiftKey && e.button === 0) {
+      dragAnchorId = blockId;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      dragActive = false;
+      document.addEventListener("mousemove", onDragMouseMove);
+      document.addEventListener("mouseup", onDragMouseUp);
+    }
+  };
+
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("mousedown", onMouseDown);
+  document.addEventListener("focusin", onFocusIn);
   return () => {
     window.removeEventListener("keydown", onKeyDown);
     window.removeEventListener("mousedown", onMouseDown);
+    document.removeEventListener("focusin", onFocusIn);
+    onDragMouseUp(); // drop any in-flight drag listeners
   };
 }
