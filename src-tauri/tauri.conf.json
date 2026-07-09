@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Hive",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "identifier": "com.taylorpratt.hive",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -14,7 +14,8 @@
       {
         "title": "Hive",
         "width": 1100,
-        "height": 780
+        "height": 780,
+        "dragDropEnabled": false
       }
     ],
     "security": {
