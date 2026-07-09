@@ -21,8 +21,11 @@ chip** in the meta line.
 > same page in Notion; let the spinner speak.)
 
 Optional flex if wifi toggling is safe: turn wifi off, open another cached
-page — it renders instantly with a quiet **"offline copy"** chip.
-> "On a plane, Notion web is a white screen. Hive doesn't even notice."
+page — it renders instantly with a quiet **"offline copy"** chip. Type a
+sentence: an amber **"● 1 unsynced"** chip appears; wifi back on, it syncs
+and toasts.
+> "On a plane, Notion web is a white screen. Hive keeps working — reads
+> AND writes. Edits queue locally and sync when I land."
 
 ## Beat 2 — Your org, not the team's (45s)
 > "This sidebar is MINE. Notion gives everyone the same shared tree — if I
@@ -71,6 +74,14 @@ box open. Type a thought, ⌘↵.
 - "Can I get my docs out?" — ⌘T → "Copy page as Markdown": the whole page,
   perfectly formatted GFM (tables, todos, code fences), straight to the
   clipboard. Notion makes this an export dialog and a zip file.
+- "How do I catch up after PTO?" — ⌘T → "While you were away": every
+  watched doc that changed since you last read it, with block-level diff
+  summaries. Notion's Updates feed is notification spam; this is a briefing.
+- "What links here?" — every page shows "Linked from N pages", computed
+  locally from the cache. Zero API calls.
+- Paste a bare Notion URL into any doc — it becomes a titled link
+  automatically. And the 🐝 in the menu bar does capture + updates without
+  touching the dock.
 - "What about databases?" — show the table view: edit cells, change a
   column type, drag… (rows/columns move via the header/gutter arrows).
 - "Does it write back safely?" — optimistic writes, one queue, ~3 rps,
