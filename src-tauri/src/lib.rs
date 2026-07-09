@@ -1,4 +1,5 @@
-use tauri::Manager;
+use tauri::{Emitter, Manager};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 /// Hive config, read from ~/.hive/config.json (git-ignored, never in the repo).
@@ -295,11 +296,38 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(
             tauri_plugin_sql::Builder::default()
                 .add_migrations("sqlite:hive.db", migrations)
                 .build(),
         )
+        .setup(|app| {
+            // System-wide quick capture: brings Hive forward and opens the
+            // capture modal even while the app is backgrounded. Registered
+            // here (not via .with_shortcuts on the plugin builder) so a
+            // failure — e.g. another app already owns ⌃⌥N — is logged
+            // instead of aborting the whole app's startup.
+            let handle = app.handle().clone();
+            let result = app.global_shortcut().on_shortcut(
+                "ctrl+alt+n",
+                move |_app, _shortcut, event| {
+                    if event.state != ShortcutState::Pressed {
+                        return;
+                    }
+                    if let Some(window) = handle.get_webview_window("main") {
+                        let _ = window.unminimize();
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                    let _ = handle.emit("hive://global-capture", ());
+                },
+            );
+            if let Err(err) = result {
+                eprintln!("global-shortcut: failed to register ctrl+alt+n: {err}");
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             get_config,
             open_embed,

@@ -161,6 +161,39 @@ function applySpaceAccent(space: Space | undefined) {
   document.documentElement.dataset.spaceAccent = space?.color ?? "sky";
 }
 
+/**
+ * Best-effort classification: does this failure look like "the network is
+ * down" rather than a real API/auth/permissions error? Deliberately
+ * generous — a false positive just shows the calmer "offline copy" chip
+ * instead of a scary error banner; a false negative shows the scarier one
+ * for what's actually a connectivity blip. Covers: the browser fetch
+ * TypeErrors WKWebView/Safari/Chromium throw when a request never reaches
+ * the network ("Failed to fetch", "Load failed", "NetworkError..."), and
+ * the @notionhq/client RequestTimeoutError (code
+ * "notionhq_client_request_timeout").
+ */
+function isNetworkError(err: unknown): boolean {
+  if (!err) return false;
+  const name = err instanceof Error ? err.name : undefined;
+  const message = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  const code = (err as { code?: string } | null)?.code?.toLowerCase();
+  if (name === "TypeError") return true; // fetch's own transport-failure shape
+  if (code?.includes("timeout")) return true; // notionhq_client_request_timeout, etc.
+  const needles = [
+    "load failed",
+    "failed to fetch",
+    "fetch failed",
+    "network",
+    "timed out",
+    "timeout",
+    "offline",
+    "internet connection",
+    "err_internet",
+    "err_network",
+  ];
+  return needles.some((n) => message.includes(n));
+}
+
 interface AppState {
   auth: { status: AuthStatus; userName?: string; message?: string };
   view: ViewMode;
@@ -173,6 +206,11 @@ interface AppState {
   // each openPage/openDemo navigation.
   loadMs: number | null;
   loadSource: "cache" | "notion" | null;
+  // "Notion web is a white screen offline; Hive doesn't notice." True once a
+  // background refresh fails in a network-shaped way while a cached copy is
+  // on screen. Cleared the instant any fetch succeeds, or a fresh openPage
+  // retry begins.
+  offline: boolean;
 
   // organization plane
   spaces: Space[];
@@ -348,6 +386,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   pageError: null,
   loadMs: null,
   loadSource: null,
+  offline: false,
 
   spaces: [],
   activeSpaceId: null,
@@ -398,6 +437,16 @@ export const useAppStore = create<AppState>((set, get) => ({
       void org.archiveExpiredToday().then((n) => {
         if (n > 0) void get().refreshSidebar();
       });
+      void get().refreshCurrentIfStale();
+    });
+
+    // navigator.onLine is a hint at best in WKWebView (it can lag or lie),
+    // so we don't trust it to CLEAR the badge — only a real fetch success
+    // does that (see openPage). But a fired "offline" event is a fine early
+    // signal to flip the badge on before the next refresh even fails.
+    window.addEventListener("offline", () => set({ offline: true }));
+    window.addEventListener("online", () => {
+      if (!navigator.onLine) return;
       void get().refreshCurrentIfStale();
     });
 
@@ -502,6 +551,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       // lands (still nav-guarded, since navSeq !== nav already returned above).
       loadMs: cached ? Math.round(performance.now() - t0) : null,
       loadSource: cached ? "cache" : null,
+      // A fresh navigation is a fresh chance — don't carry a stale offline
+      // badge into a page we haven't even tried to fetch yet.
+      offline: false,
     });
     get().closePeek();
     if (cached) await get().recordOpen(pageId, cached);
@@ -513,6 +565,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({
         page: fresh,
         pageStatus: "idle",
+        offline: false,
         // Only stamp the "notion" timing for a genuine cold load — a cache
         // hit already recorded its (much faster) number above.
         ...(cached ? {} : { loadMs: Math.round(performance.now() - t0), loadSource: "notion" as const }),
@@ -521,8 +574,21 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (err) {
       if (get().pageId !== pageId) return;
       const message = err instanceof Error ? err.message : String(err);
+      const networkish = isNetworkError(err);
       if (cached) {
-        set({ pageStatus: "idle", pageError: `Refresh failed: ${message}` });
+        // The selling point: a cached page stays fully on screen — no error
+        // banner, just a quiet "offline copy" badge on the load chip.
+        if (networkish) {
+          set({ pageStatus: "idle", offline: true });
+        } else {
+          set({ pageStatus: "idle", pageError: `Refresh failed: ${message}` });
+        }
+      } else if (networkish) {
+        set({
+          pageStatus: "error",
+          pageError: "You're offline and this page isn't cached yet.",
+          offline: true,
+        });
       } else {
         set({ pageStatus: "error", pageError: message });
       }
@@ -629,6 +695,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       // proof chip as a real cached page.
       loadMs: Math.round(performance.now() - t0),
       loadSource: "cache",
+      // Fresh navigation, and the demo fixture never touches the network —
+      // don't let a stale offline badge from a previous real page leak in.
+      offline: false,
     });
     get().closePeek();
     await get().recordOpen(DEMO_PAGE_ID, data);
@@ -1186,7 +1255,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       try {
         const fresh = await fetchFresh(pageId);
         if (get().split?.pageId === pageId) {
-          set({ split: { pageId, data: fresh } });
+          set({ split: { pageId, data: fresh }, offline: false });
         }
       } catch { /* keep cached */ }
     }

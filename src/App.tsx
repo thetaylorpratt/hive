@@ -265,6 +265,7 @@ function Content() {
   const displayPrefs = useAppStore((s) => s.displayPrefs);
   const loadMs = useAppStore((s) => s.loadMs);
   const loadSource = useAppStore((s) => s.loadSource);
+  const offline = useAppStore((s) => s.offline);
 
   if (searchView) return <SearchResults />;
 
@@ -338,11 +339,17 @@ function Content() {
             <>
               <span
                 className={`hive-load-chip${
-                  loadSource === "cache" ? " hive-load-chip-cache" : ""
+                  loadSource === "cache"
+                    ? offline
+                      ? " hive-load-chip-offline"
+                      : " hive-load-chip-cache"
+                    : ""
                 }`}
               >
                 {loadSource === "cache"
-                  ? `⚡ ${loadMs} ms · cache`
+                  ? offline
+                    ? `⚡ ${loadMs} ms · offline copy`
+                    : `⚡ ${loadMs} ms · cache`
                   : `${loadMs} ms · fetched live`}
               </span>{" "}
               ·{" "}
@@ -532,6 +539,18 @@ export default function App() {
       })
       .catch(() => undefined); // plain-browser dev: no deep links
     return () => unlisten?.();
+  }, []);
+
+  // System-wide quick capture: ⌃⌥N from any app raises Hive with the
+  // capture modal open (Rust registers the shortcut and emits the event).
+  useEffect(() => {
+    let uninstall: (() => void) | undefined;
+    void import("./lib/globalCapture")
+      .then(async (m) => {
+        uninstall = await m.installGlobalCaptureListener();
+      })
+      .catch(() => undefined);
+    return () => uninstall?.();
   }, []);
 
   useEffect(() => {

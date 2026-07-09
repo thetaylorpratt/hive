@@ -1,7 +1,9 @@
 import { useEffect, useRef } from "react";
 import { useAppStore } from "../store/appStore";
 import { blocksToPlainText, pageTitle } from "../lib/pageMeta";
+import { pageToMarkdown } from "../lib/markdownExport";
 import { DEMO_PAGE_ID } from "../lib/demoPage";
+import type { HiveBlock } from "../lib/types";
 
 /** The ⋯ page-options menu (Notion parity, API-possible subset). */
 export function PageMenu({ onClose }: { onClose: () => void }) {
@@ -57,6 +59,14 @@ export function PageMenu({ onClose }: { onClose: () => void }) {
           )}`,
         );
         store.getState().showToast("Page text copied");
+      })}
+      {item("Copy as Markdown", () => {
+        const s = store.getState();
+        if (!s.page) return;
+        void navigator.clipboard.writeText(
+          pageToMarkdown(pageTitle(s.page.page), s.page.blocks as HiveBlock[]),
+        );
+        store.getState().showToast("Markdown copied");
       })}
       <div className="sep" />
       {item(

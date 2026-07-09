@@ -2616,6 +2616,13 @@ kbd {
   background: var(--hive-color-accent-subtle);
   color: var(--hive-color-accent);
 }
+/* Notion web goes to a white screen offline; Hive just quietly says so on
+ * the same chip that normally brags about cache speed — same shape, a
+ * muted warning tint instead of the accent, no separate banner. */
+.hive-load-chip-offline {
+  background: var(--hive-color-warning-bg);
+  color: var(--hive-color-warning-fg);
+}
 
 /* ---- cold-load skeleton (title bar + lines, shimmer) ---- */
 

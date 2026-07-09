@@ -9,6 +9,8 @@ import { normalizePageId } from "../lib/fetchPage";
 import { searchCachedPages } from "../lib/db";
 import type { SearchHit } from "../lib/db";
 import type { FrecencyEntry } from "../lib/frecencyDb";
+import { pageToMarkdown } from "../lib/markdownExport";
+import type { HiveBlock } from "../lib/types";
 
 /**
  * Cmd-T command bar (Phase 3): one input searches sidebar docs,
@@ -126,6 +128,14 @@ function useActions(): Result[] {
       action("Close split", "⫱", () => store.getState().closeSplit()),
       action("Pin current doc", "📌", () => void pinCurrent("pinned")),
       action("Favorite current doc", "★", () => void pinCurrent("favorite")),
+      action("Copy page as Markdown", "⬇", () => {
+        const s = store.getState();
+        if (!s.page) return;
+        void navigator.clipboard.writeText(
+          pageToMarkdown(pageTitle(s.page.page), s.page.blocks as HiveBlock[]),
+        );
+        s.showToast("Markdown copied");
+      }),
     );
   }
   const crumbs = useAppStore((s) => s.breadcrumbs);

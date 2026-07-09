@@ -20,6 +20,10 @@ chip** in the meta line.
 > refreshes live. Now watch the same doc in Notion's own app…" (click the
 > same page in Notion; let the spinner speak.)
 
+Optional flex if wifi toggling is safe: turn wifi off, open another cached
+page — it renders instantly with a quiet **"offline copy"** chip.
+> "On a plane, Notion web is a white screen. Hive doesn't even notice."
+
 ## Beat 2 — Your org, not the team's (45s)
 > "This sidebar is MINE. Notion gives everyone the same shared tree — if I
 > reorganize, I reorganize it for the whole company."
@@ -38,6 +42,11 @@ Click the Linear/Google link in Slack → opens in Arc.
 > "Notion links land here, in the fast client. Everything else passes
 > through to my real browser. No app-switching tax, no 'open in app?'
 > prompts."
+
+Then, still in Slack: hit **⌃⌥N** — Hive leaps forward with the capture
+box open. Type a thought, ⌘↵.
+> "That's now a real Notion page. Global capture from any app on the Mac —
+> Notion has nothing like it. An idea costs two keystrokes to keep."
 
 ## Beat 4 — Real work: edit, comment as YOU (60s)
 - Type in a doc: markdown autoformat (`- `, `## `), `/database` mention,
@@ -59,6 +68,9 @@ Click the Linear/Google link in Slack → opens in Arc.
 > notarized. Download the DMG and it's yours."
 
 ## Q&A ammo
+- "Can I get my docs out?" — ⌘T → "Copy page as Markdown": the whole page,
+  perfectly formatted GFM (tables, todos, code fences), straight to the
+  clipboard. Notion makes this an export dialog and a zip file.
 - "What about databases?" — show the table view: edit cells, change a
   column type, drag… (rows/columns move via the header/gutter arrows).
 - "Does it write back safely?" — optimistic writes, one queue, ~3 rps,

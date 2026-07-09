@@ -25,6 +25,9 @@ import "../styles/home.css";
 const TIPS: { keys?: string; text: string }[] = [
   { keys: "⌘T", text: "Search everything — titles live from Notion, full document content from Hive's local index." },
   { keys: "⌘⌥N", text: "Quick capture: jot a note, ⌘↵ files it as a real Notion page under 🐝 Hive Captures." },
+  { keys: "⌃⌥N", text: "Capture from ANYWHERE — Slack, your editor, a call. The global hotkey summons Hive with the capture box ready." },
+  { text: "No wifi? Cached pages open instantly anyway — watch for the “offline copy” chip. Notion web is a white screen." },
+  { text: "⌘T → “Copy page as Markdown” puts the whole doc on your clipboard, perfectly formatted. No export dialogs, no zip files." },
   { text: "Hover any sidebar doc for a peek — click the preview to open it fully." },
   { keys: "⌃Tab", text: "Cycle your most recent docs, Arc-style. Hold ⌃, tap Tab, release to open." },
   { text: "Two-finger swipe on the sidebar switches Spaces. ⌃1–9 jumps directly." },
@@ -50,7 +53,7 @@ const DIFFERENTIATORS: {
   {
     icon: Lightning,
     title: "Instant everything",
-    body: "Pages open from local cache in milliseconds — then refresh live. No spinners.",
+    body: "Pages open from local cache in milliseconds — then refresh live. Even offline. No spinners.",
   },
   {
     icon: SquaresFour,
