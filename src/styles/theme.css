@@ -1117,6 +1117,22 @@ tr:hover .hive-row-gutter {
   font-weight: 600;
   padding: 4px 8px 10px;
   color: var(--hive-color-fg);
+  /* Flex keeps SVG icons (ph:/URL) on the same line as the name — as loose
+   * inline content an SVG can wrap the name onto its own line. */
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.hive-space-name-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.hive-space-name-text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .hive-space-name-input {
   width: 100%;

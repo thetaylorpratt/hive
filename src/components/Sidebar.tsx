@@ -510,11 +510,11 @@ function SpaceName() {
       }}
     >
       {space.icon && (
-        <span style={{ marginRight: "0.4em" }}>
+        <span className="hive-space-name-icon">
           <Glyph icon={space.icon} size={14} />
         </span>
       )}
-      {space.name}
+      <span className="hive-space-name-text">{space.name}</span>
     </div>
   );
 }
