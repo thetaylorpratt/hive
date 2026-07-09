@@ -168,6 +168,11 @@ interface AppState {
   page: PageData | null;
   pageStatus: PageStatus;
   pageError: string | null;
+  // felt-speed proof: how long the currently-shown page took to render, and
+  // whether that came from local cache or a live Notion fetch. Reset on
+  // each openPage/openDemo navigation.
+  loadMs: number | null;
+  loadSource: "cache" | "notion" | null;
 
   // organization plane
   spaces: Space[];
@@ -341,6 +346,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   page: null,
   pageStatus: "idle",
   pageError: null,
+  loadMs: null,
+  loadSource: null,
 
   spaces: [],
   activeSpaceId: null,
@@ -455,6 +462,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   openPage: async (input: string) => {
     if (input === DEMO_PAGE_ID) return get().openDemo();
     const nav = ++navSeq;
+    const t0 = performance.now();
     set({ lastOpenInput: input });
     const pageId = normalizePageId(input);
     if (!pageId) {
@@ -489,6 +497,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       commentThreads: samePage ? get().commentThreads : null,
       breadcrumbs: [],
       displayPrefs: loadDisplayPrefs(pageId),
+      // Cache hit renders instantly — that's the number we prove. A cache
+      // miss doesn't get a time yet; it's set below once the fresh fetch
+      // lands (still nav-guarded, since navSeq !== nav already returned above).
+      loadMs: cached ? Math.round(performance.now() - t0) : null,
+      loadSource: cached ? "cache" : null,
     });
     get().closePeek();
     if (cached) await get().recordOpen(pageId, cached);
@@ -497,7 +510,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       const fresh = await fetchFresh(pageId);
       // A newer navigation may have happened while we were fetching.
       if (get().pageId !== pageId) return;
-      set({ page: fresh, pageStatus: "idle" });
+      set({
+        page: fresh,
+        pageStatus: "idle",
+        // Only stamp the "notion" timing for a genuine cold load — a cache
+        // hit already recorded its (much faster) number above.
+        ...(cached ? {} : { loadMs: Math.round(performance.now() - t0), loadSource: "notion" as const }),
+      });
       await get().recordOpen(pageId, fresh);
     } catch (err) {
       if (get().pageId !== pageId) return;
@@ -569,6 +588,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   openDemo: async () => {
     const nav = ++navSeq;
+    const t0 = performance.now();
     if (!suppressHistory && history[historyIndex] !== DEMO_PAGE_ID) {
       history = [...history.slice(0, historyIndex + 1), DEMO_PAGE_ID];
       historyIndex = history.length - 1;
@@ -604,6 +624,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({
       pageId: DEMO_PAGE_ID, page: data, pageStatus: "idle", pageError: null,
       focusBlockId: null, writeError: null,
+      // The demo fixture is always local (SQLite page_cache or an in-memory
+      // fallback) — it's the cache-hit path, so it gets the same felt-speed
+      // proof chip as a real cached page.
+      loadMs: Math.round(performance.now() - t0),
+      loadSource: "cache",
     });
     get().closePeek();
     await get().recordOpen(DEMO_PAGE_ID, data);

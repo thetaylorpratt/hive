@@ -1,0 +1,267 @@
+/*
+ * HomeScreen — the demo opener. Sole owner: src/components/HomeScreen.tsx.
+ * Uses --hive-color-* / --hive-radius-* tokens from theme.css; does not
+ * modify theme.css. Root class is "hh" (scoped, distinct from the legacy
+ * ".hive-home" rules still in theme.css, which no longer apply here).
+ */
+
+.hh {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 0 1.5rem 4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+/* ---- hero ---- */
+
+.hh-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 4.25rem 1rem 2.25rem;
+  text-align: center;
+  border-radius: 14px;
+}
+
+.hh-hex-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  color: var(--hive-color-fg);
+  opacity: 0.05;
+  pointer-events: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+  mask-image: radial-gradient(ellipse 65% 80% at 50% 40%, black 35%, transparent 88%);
+  -webkit-mask-image: radial-gradient(ellipse 65% 80% at 50% 40%, black 35%, transparent 88%);
+}
+
+.hh-hero-content {
+  position: relative;
+}
+
+.hh-wordmark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+.hh-bee {
+  font-size: 2rem;
+  line-height: 1;
+  transform: translateY(1px);
+}
+
+.hh-word {
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  margin: 0;
+  color: var(--hive-color-fg);
+}
+
+.hh-tagline {
+  margin: 0.5rem 0 0;
+  font-size: 0.95rem;
+  color: var(--hive-color-fg-muted);
+  letter-spacing: -0.005em;
+}
+
+/* ---- differentiator cards ---- */
+
+.hh-diffs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.hh-diff-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 18px 16px;
+  background: var(--hive-color-bg-surface);
+  border: 1px solid var(--hive-color-border-subtle);
+  border-radius: 10px;
+  color: var(--hive-color-fg-secondary);
+  transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
+}
+
+.hh-diff-card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--hive-shadow-sm);
+  border-color: var(--hive-color-border);
+}
+
+.hh-diff-card svg {
+  color: var(--hive-color-accent);
+}
+
+.hh-diff-card h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--hive-color-fg);
+  letter-spacing: -0.01em;
+}
+
+.hh-diff-card p {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--hive-color-fg-muted);
+}
+
+/* ---- keyboard row ---- */
+
+.hh-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--hive-color-fg-muted);
+  text-align: center;
+}
+
+.hh-shortcut {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
+.hh-shortcut kbd {
+  font-size: 0.7rem;
+}
+
+.hh-dot {
+  margin-right: 0.35rem;
+  opacity: 0.6;
+}
+
+/* ---- tip line ---- */
+
+.hh-tip {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 7px;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--hive-color-fg-muted);
+  transition: opacity 250ms ease;
+  min-height: 1.4em;
+}
+
+.hh-tip.fading {
+  opacity: 0;
+}
+
+.hh-tip-bulb {
+  color: var(--hive-color-warning-fg);
+  flex-shrink: 0;
+  transform: translateY(1px);
+}
+
+.hh-tip kbd {
+  font-size: 0.68rem;
+}
+
+/* ---- recents grid ---- */
+
+.hh-recents {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.hh-section-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--hive-color-fg-muted);
+}
+
+.hh-recents-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 8px;
+}
+
+.hh-recent {
+  font: inherit;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--hive-color-bg-surface);
+  border: 1px solid var(--hive-color-border-subtle);
+  border-radius: 10px;
+  color: var(--hive-color-fg-secondary);
+  cursor: pointer;
+  text-align: left;
+  transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
+}
+
+.hh-recent:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--hive-shadow-sm);
+  border-color: var(--hive-color-border);
+  color: var(--hive-color-fg);
+}
+
+.hh-recent-icon {
+  display: flex;
+  flex-shrink: 0;
+  color: var(--hive-color-fg-muted);
+}
+
+.hh-recent-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hh-recent-go {
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.hh-recent:hover .hh-recent-go {
+  opacity: 1;
+}
+
+/* ---- demo link ---- */
+
+.hh-demo-link {
+  font: inherit;
+  font-size: 0.8rem;
+  border: none;
+  background: none;
+  color: var(--hive-color-fg-muted);
+  cursor: pointer;
+  text-align: center;
+  margin: 0 auto;
+}
+
+.hh-demo-link:hover {
+  color: var(--hive-color-accent);
+}
+
+@media (max-width: 640px) {
+  .hh-diffs {
+    grid-template-columns: 1fr;
+  }
+}

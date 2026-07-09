@@ -263,6 +263,8 @@ function Content() {
   const pageDiffs = useAppStore((s) => s.pageDiffs);
   const dismissDiff = useAppStore((s) => s.dismissDiff);
   const displayPrefs = useAppStore((s) => s.displayPrefs);
+  const loadMs = useAppStore((s) => s.loadMs);
+  const loadSource = useAppStore((s) => s.loadSource);
 
   if (searchView) return <SearchResults />;
 
@@ -332,6 +334,20 @@ function Content() {
           className="mb-4"
           style={{ fontSize: "0.75rem", color: "var(--hive-color-fg-muted)" }}
         >
+          {loadSource && loadMs !== null && (
+            <>
+              <span
+                className={`hive-load-chip${
+                  loadSource === "cache" ? " hive-load-chip-cache" : ""
+                }`}
+              >
+                {loadSource === "cache"
+                  ? `⚡ ${loadMs} ms · cache`
+                  : `${loadMs} ms · fetched live`}
+              </span>{" "}
+              ·{" "}
+            </>
+          )}
           {page.fromCache ? "served from cache" : "fresh from Notion"} · fetched{" "}
           {new Date(page.fetchedAt).toLocaleString()}
           {pageStatus === "refreshing" && " · refreshing…"}
@@ -418,14 +434,24 @@ function Content() {
   }
 
   if (pageStatus === "loading") {
-    return (
-      <Notice tone="neutral" title="Loading">
-        <p>Fetching page from Notion…</p>
-      </Notice>
-    );
+    return <PageSkeleton />;
   }
 
   return <HomeScreen />;
+}
+
+/** Cold-load placeholder: a content skeleton instead of a bare spinner
+ * notice, so even the (rare) uncached load still feels alive. */
+function PageSkeleton() {
+  return (
+    <article className="hive-doc hive-page-in">
+      <div className="hive-skeleton hive-skeleton-title" />
+      <div className="hive-skeleton hive-skeleton-line" />
+      <div className="hive-skeleton hive-skeleton-line" />
+      <div className="hive-skeleton hive-skeleton-line" />
+      <div className="hive-skeleton hive-skeleton-line short" />
+    </article>
+  );
 }
 
 export default function App() {

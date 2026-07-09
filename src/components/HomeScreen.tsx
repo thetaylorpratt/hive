@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
+import type { ComponentType } from "react";
 import {
-  MagnifyingGlass,
-  PencilSimpleLine,
-  Bell,
+  Lightning,
+  SquaresFour,
+  Compass,
   Lightbulb,
   FileText,
   ArrowRight,
@@ -11,11 +12,14 @@ import { useAppStore } from "../store/appStore";
 import { Glyph } from "../lib/iconSets";
 import { topRecents } from "../lib/frecencyDb";
 import type { FrecencyEntry } from "../lib/frecencyDb";
+import "../styles/home.css";
 
 /**
- * The start page: quick actions, your recent docs, and a rotating tip that
- * teaches one Hive behavior at a time (Lattice-styled, Phosphor icons —
- * the same set Lattice wraps).
+ * The start page — the pitch. Three things Notion's own app/browser cannot
+ * do (instant local cache, your-own organization, browser-level link
+ * handling), a keyboard cheat-sheet, your recents, and a rotating tip that
+ * teaches one Hive behavior at a time (Lattice-styled, Phosphor icons — the
+ * same set Lattice wraps).
  */
 
 const TIPS: { keys?: string; text: string }[] = [
@@ -38,13 +42,63 @@ const TIPS: { keys?: string; text: string }[] = [
   { text: "Click a Notion link anywhere on your Mac — it opens here. Everything else passes through to your browser." },
 ];
 
+const DIFFERENTIATORS: {
+  icon: ComponentType<{ size?: number; weight?: "regular" | "bold" | "fill" }>;
+  title: string;
+  body: string;
+}[] = [
+  {
+    icon: Lightning,
+    title: "Instant everything",
+    body: "Pages open from local cache in milliseconds — then refresh live. No spinners.",
+  },
+  {
+    icon: SquaresFour,
+    title: "Your spaces, your rules",
+    body: "Pin, group, and organize the team wiki privately. Nobody else's sidebar changes.",
+  },
+  {
+    icon: Compass,
+    title: "It's your browser",
+    body: "Notion links from anywhere open here. Everything else goes to Arc. Comments post as you.",
+  },
+];
+
+const SHORTCUTS: { keys: string; label: string }[] = [
+  { keys: "⌘T", label: "search" },
+  { keys: "⌘⌥N", label: "capture" },
+  { keys: "⌃Tab", label: "switch" },
+  { keys: "⌘\\", label: "sidebar" },
+  { keys: "⌘⇧F", label: "focus" },
+];
+
+/** A very low-contrast honeycomb lattice, built once, tiled behind the hero. */
+function buildHoneycomb(cols: number, rows: number, r: number) {
+  const dx = r * 1.5;
+  const dy = r * Math.sqrt(3);
+  const angles = [0, 60, 120, 180, 240, 300];
+  let d = "";
+  for (let col = 0; col < cols; col++) {
+    for (let row = 0; row < rows; row++) {
+      const cx = col * dx;
+      const cy = row * dy + (col % 2 === 1 ? dy / 2 : 0);
+      const pts = angles.map((deg) => {
+        const rad = (Math.PI / 180) * deg;
+        return `${(cx + r * Math.cos(rad)).toFixed(1)},${(cy + r * Math.sin(rad)).toFixed(1)}`;
+      });
+      d += `M${pts[0]} L${pts[1]} L${pts[2]} L${pts[3]} L${pts[4]} L${pts[5]} Z `;
+    }
+  }
+  const width = (cols - 1) * dx + r * 2;
+  const height = rows * dy + dy;
+  return { d: d.trim(), width, height };
+}
+
+const HONEYCOMB = buildHoneycomb(16, 7, 17);
+
 export function HomeScreen() {
-  const setCommandBarOpen = useAppStore((s) => s.setCommandBarOpen);
-  const setCaptureOpen = useAppStore((s) => s.setCaptureOpen);
-  const setInboxOpen = useAppStore((s) => s.setInboxOpen);
   const openDemo = useAppStore((s) => s.openDemo);
   const openPage = useAppStore((s) => s.openPage);
-  const inboxCount = useAppStore((s) => s.inbox.length);
 
   const [recents, setRecents] = useState<FrecencyEntry[]>([]);
   const [tip, setTip] = useState(() => Math.floor(Math.random() * TIPS.length));
@@ -68,59 +122,75 @@ export function HomeScreen() {
   const current = TIPS[tip];
 
   return (
-    <div className="hive-home hive-page-in">
-      <div className="hero">
-        <span className="bee">🐝</span>
-        <h1>Hive</h1>
-        <p>Your Notion, organized your way.</p>
-      </div>
-
-      <div className="actions">
-        <button className="card" onClick={() => setCommandBarOpen(true)}>
-          <MagnifyingGlass size={20} weight="bold" />
-          <span className="t">Search</span>
-          <kbd>⌘T</kbd>
-        </button>
-        <button className="card" onClick={() => setCaptureOpen(true)}>
-          <PencilSimpleLine size={20} weight="bold" />
-          <span className="t">Capture</span>
-          <kbd>⌘⌥N</kbd>
-        </button>
-        <button className="card" onClick={() => setInboxOpen(true)}>
-          <Bell size={20} weight="bold" />
-          <span className="t">Inbox</span>
-          {inboxCount > 0 && <span className="badge">{inboxCount}</span>}
-        </button>
-      </div>
-
-      {recents.length > 0 && (
-        <div className="recents">
-          <div className="label">Pick up where you left off</div>
-          {recents.map((r) => (
-            <button
-              key={r.notionPageId}
-              className="recent"
-              onClick={() => void openPage(r.notionPageId)}
-            >
-              <span className="icon">
-                {r.iconCache ? <Glyph icon={r.iconCache} size={15} /> : <FileText size={15} />}
-              </span>
-              <span className="title">{r.titleCache}</span>
-              <ArrowRight size={13} className="go" />
-            </button>
-          ))}
+    <div className="hh hive-page-in">
+      <section className="hh-hero">
+        <svg
+          className="hh-hex-bg"
+          viewBox={`0 0 ${HONEYCOMB.width} ${HONEYCOMB.height}`}
+          preserveAspectRatio="xMidYMid slice"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <path d={HONEYCOMB.d} />
+        </svg>
+        <div className="hh-hero-content">
+          <div className="hh-wordmark">
+            <span className="hh-bee" aria-hidden="true">🐝</span>
+            <h1 className="hh-word">Hive</h1>
+          </div>
+          <p className="hh-tagline">Your Notion, at the speed of thought.</p>
         </div>
-      )}
+      </section>
 
-      <div className={`tip${fading ? " fading" : ""}`}>
-        <Lightbulb size={16} weight="fill" className="bulb" />
+      <section className="hh-diffs" aria-label="Why Hive">
+        {DIFFERENTIATORS.map(({ icon: Icon, title, body }) => (
+          <div className="hh-diff-card" key={title}>
+            <Icon size={20} weight="bold" />
+            <h2>{title}</h2>
+            <p>{body}</p>
+          </div>
+        ))}
+      </section>
+
+      <div className="hh-shortcuts" aria-label="Keyboard shortcuts">
+        {SHORTCUTS.map((s, i) => (
+          <span className="hh-shortcut" key={s.keys}>
+            {i > 0 && <span className="hh-dot">·</span>}
+            <kbd>{s.keys}</kbd> {s.label}
+          </span>
+        ))}
+      </div>
+
+      <div className={`hh-tip${fading ? " fading" : ""}`}>
+        <Lightbulb size={14} weight="fill" className="hh-tip-bulb" />
         <span>
           {current.keys && <kbd>{current.keys}</kbd>} {current.text}
         </span>
       </div>
 
+      {recents.length > 0 && (
+        <section className="hh-recents">
+          <div className="hh-section-label">Pick up where you left off</div>
+          <div className="hh-recents-grid">
+            {recents.map((r) => (
+              <button
+                key={r.notionPageId}
+                className="hh-recent"
+                onClick={() => void openPage(r.notionPageId)}
+              >
+                <span className="hh-recent-icon">
+                  {r.iconCache ? <Glyph icon={r.iconCache} size={16} /> : <FileText size={16} />}
+                </span>
+                <span className="hh-recent-title">{r.titleCache}</span>
+                <ArrowRight size={13} className="hh-recent-go" />
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
       {recents.length === 0 && (
-        <button className="demo-link" onClick={() => void openDemo()}>
+        <button className="hh-demo-link" onClick={() => void openDemo()}>
           New here? Load the demo page to try everything →
         </button>
       )}
