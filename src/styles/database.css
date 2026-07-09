@@ -1,0 +1,428 @@
+/*
+ * Database (table view) — `child_database` blocks (docs/DB_SPEC.md).
+ * Own namespace: every selector here is scoped under .hive-db* so nothing
+ * bleeds into (or collides with) the simple-table styles in theme.css.
+ */
+
+.hive-db {
+  margin: 0.8em 0;
+  font-size: 0.85rem;
+  border: 1px solid var(--hive-color-border-subtle);
+  border-radius: var(--hive-radius);
+  background: var(--hive-color-bg-surface);
+  overflow: hidden;
+}
+
+/* ---- header ---- */
+
+.hive-db-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--hive-color-border-subtle);
+}
+.hive-db-title {
+  font-weight: 600;
+  color: var(--hive-color-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hive-db-count {
+  margin-left: 4px;
+  font-size: 0.72rem;
+  color: var(--hive-color-fg-muted);
+  background: var(--hive-color-bg-subtle);
+  border-radius: var(--hive-radius-sm);
+  padding: 1px 6px;
+}
+
+/* ---- table ---- */
+
+.hive-db-tablewrap {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 60vh;
+}
+.hive-db-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.85rem;
+}
+.hive-db-table th,
+.hive-db-table td.hive-db-td {
+  border-bottom: 1px solid var(--hive-color-border-subtle);
+  border-right: 1px solid var(--hive-color-border-subtle);
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hive-db-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--hive-color-bg-subtle);
+  border-bottom: 1px solid var(--hive-color-border);
+  padding: 0;
+  white-space: nowrap;
+}
+.hive-db-th {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 10px;
+}
+.hive-db-th .name {
+  font-weight: 600;
+  color: var(--hive-color-fg-secondary);
+}
+.hive-db-th .type {
+  font-size: 0.68rem;
+  color: var(--hive-color-fg-muted);
+  text-transform: capitalize;
+}
+.hive-db-th-add {
+  width: 32px;
+  text-align: center;
+}
+
+.hive-db-row:hover {
+  background: var(--hive-color-bg-subtle);
+}
+
+.hive-db-gutter {
+  width: 28px;
+  text-align: center;
+  border-right: none !important;
+  opacity: 0;
+}
+.hive-db-row:hover .hive-db-gutter {
+  opacity: 1;
+}
+.hive-db-archive {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--hive-color-fg-muted);
+  padding: 2px;
+  display: inline-flex;
+  align-items: center;
+}
+.hive-db-archive:hover {
+  color: var(--hive-color-critical-fg);
+}
+
+/* ---- cell primitives ---- */
+
+.placeholder {
+  color: var(--hive-color-fg-muted);
+}
+.hive-db-text {
+  display: block;
+  min-height: 1.2em;
+  cursor: text;
+}
+.hive-db-text.readonly {
+  cursor: default;
+  color: var(--hive-color-fg-muted);
+}
+.hive-db-cell-input {
+  font: inherit;
+  font-size: 0.85rem;
+  width: 100%;
+  border: 1px solid var(--hive-color-accent);
+  border-radius: var(--hive-radius-sm);
+  padding: 3px 6px;
+  background: var(--hive-color-bg-surface);
+  color: inherit;
+  outline: none;
+}
+
+.hive-db-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.hive-db-title .hive-db-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hive-db-open {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--hive-color-fg-muted);
+  opacity: 0;
+  padding: 2px;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.hive-db-title:hover .hive-db-open {
+  opacity: 1;
+}
+.hive-db-open:hover {
+  color: var(--hive-color-accent);
+}
+
+.hive-db-checkbox {
+  cursor: pointer;
+}
+
+.hive-db-date {
+  font: inherit;
+  font-size: 0.8rem;
+  border: 1px solid transparent;
+  border-radius: var(--hive-radius-sm);
+  padding: 3px 4px;
+  background: transparent;
+  color: inherit;
+}
+.hive-db-date:hover,
+.hive-db-date:focus {
+  border-color: var(--hive-color-border);
+  background: var(--hive-color-bg-surface);
+}
+
+/* ---- select / status / multi-select ---- */
+
+.hive-db-option-cell {
+  position: relative;
+}
+.hive-db-option-trigger {
+  display: block;
+  width: 100%;
+  min-height: 1.4em;
+  text-align: left;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+}
+.hive-db-option-trigger:disabled {
+  cursor: default;
+}
+.hive-db-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.hive-db-chip {
+  display: inline-block;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--hive-color-bg-subtle);
+  color: var(--hive-color-fg-secondary);
+  white-space: nowrap;
+}
+.hive-db-chip[data-hive-color="gray"] { background: var(--hive-color-bg-subtle); color: var(--hive-color-fg-muted); }
+.hive-db-chip[data-hive-color="brown"] { background: rgba(141, 110, 99, 0.16); color: #8d6e63; }
+.hive-db-chip[data-hive-color="orange"] { background: rgba(217, 119, 6, 0.16); color: #d97706; }
+.hive-db-chip[data-hive-color="yellow"] { background: var(--hive-color-warning-bg); color: var(--hive-color-warning-fg); }
+.hive-db-chip[data-hive-color="green"] { background: var(--hive-color-success-bg); color: var(--hive-color-success-fg); }
+.hive-db-chip[data-hive-color="blue"] { background: var(--hive-color-accent-subtle); color: var(--hive-color-accent); }
+.hive-db-chip[data-hive-color="purple"] { background: rgba(126, 87, 194, 0.16); color: #7e57c2; }
+.hive-db-chip[data-hive-color="pink"] { background: rgba(216, 27, 96, 0.16); color: #d81b60; }
+.hive-db-chip[data-hive-color="red"] { background: var(--hive-color-critical-bg); color: var(--hive-color-critical-fg); }
+
+/* ---- dropdowns (select / multi-select / add-column) ---- */
+/* Same feel as .hive-slash-menu (theme.css) but a distinct, owned class. */
+
+.hive-db-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 500;
+  min-width: 200px;
+  max-width: 280px;
+  background: var(--hive-color-bg-surface);
+  border: 1px solid var(--hive-color-border);
+  border-radius: var(--hive-radius);
+  box-shadow: var(--hive-shadow-popover);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  animation: hive-db-pop-in 120ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hive-db-dropdown {
+    animation: none !important;
+  }
+}
+@keyframes hive-db-pop-in {
+  from { opacity: 0; transform: scale(0.97) translateY(-2px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.hive-db-dropdown-filter {
+  font: inherit;
+  font-size: 0.82rem;
+  border: 1px solid var(--hive-color-border);
+  border-radius: var(--hive-radius-sm);
+  padding: 4px 6px;
+  background: var(--hive-color-bg-surface);
+  color: inherit;
+}
+.hive-db-dropdown-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.hive-db-dropdown-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: var(--hive-radius-sm);
+  cursor: pointer;
+  font-size: 0.82rem;
+}
+.hive-db-dropdown-row:hover {
+  background: var(--hive-color-bg-subtle);
+}
+.hive-db-dropdown-row.create {
+  color: var(--hive-color-accent);
+}
+.hive-db-dropdown-empty {
+  padding: 6px;
+  color: var(--hive-color-fg-muted);
+  font-size: 0.8rem;
+}
+
+/* ---- add column ---- */
+
+.hive-db-addcol {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+.hive-db-addcol-btn {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--hive-color-fg-muted);
+  padding: 6px;
+  display: inline-flex;
+  align-items: center;
+}
+.hive-db-addcol-btn:hover {
+  color: var(--hive-color-accent);
+}
+.hive-db-addcol-pop {
+  left: auto;
+  right: 0;
+  min-width: 220px;
+}
+.hive-db-addcol-pop select {
+  font: inherit;
+  font-size: 0.82rem;
+  border: 1px solid var(--hive-color-border);
+  border-radius: var(--hive-radius-sm);
+  padding: 4px 6px;
+  background: var(--hive-color-bg-surface);
+  color: inherit;
+}
+
+/* ---- empty state ---- */
+
+.hive-db-empty {
+  padding: 14px 10px;
+  text-align: center;
+  color: var(--hive-color-fg-muted);
+  border: none !important;
+}
+
+/* ---- bottom bar ---- */
+
+.hive-db-bottom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--hive-color-border-subtle);
+}
+.hive-db-newrow,
+.hive-db-loadmore {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: inherit;
+  font-size: 0.8rem;
+  border: none;
+  background: none;
+  color: var(--hive-color-fg-muted);
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: var(--hive-radius-sm);
+}
+.hive-db-newrow:hover,
+.hive-db-loadmore:hover {
+  color: var(--hive-color-accent);
+  background: var(--hive-color-bg-subtle);
+}
+.hive-db-loadmore:disabled {
+  cursor: not-allowed;
+  color: var(--hive-color-fg-muted);
+  background: none;
+}
+
+/* ---- error state ---- */
+
+.hive-db-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  color: var(--hive-color-fg-secondary);
+}
+
+/* ---- loading skeleton ---- */
+
+.hive-db-skeleton .hive-db-head {
+  border-bottom: none;
+}
+.hive-db-skel-bar {
+  display: inline-block;
+  width: 140px;
+  height: 14px;
+  border-radius: var(--hive-radius-sm);
+  background: var(--hive-color-bg-subtle);
+  animation: hive-db-pulse 1.4s ease-in-out infinite;
+}
+.hive-db-skel-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 12px 14px;
+}
+.hive-db-skel-row {
+  display: block;
+  height: 16px;
+  border-radius: var(--hive-radius-sm);
+  background: var(--hive-color-bg-subtle);
+  animation: hive-db-pulse 1.4s ease-in-out infinite;
+}
+@keyframes hive-db-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hive-db-skel-bar,
+  .hive-db-skel-row {
+    animation: none !important;
+  }
+}

@@ -214,6 +214,7 @@ const SLASH_OPTIONS: { label: string; type: string; keywords: string }[] = [
   { label: "Callout", type: "callout", keywords: "callout info note" },
   { label: "Divider", type: "divider", keywords: "divider rule hr div" },
   { label: "Code", type: "code", keywords: "code snippet" },
+  { label: "Database (table view)", type: "database", keywords: "database table view db" },
 ];
 
 /** Notion's color palette for ⌘⇧H; `_background` variants highlight. */
@@ -482,6 +483,10 @@ export function EditableText({
   const pickSlash = (type: string) => {
     setSlash(null);
     if (ref.current) ref.current.innerHTML = "";
+    if (type === "database") {
+      void useAppStore.getState().createDatabaseInline(block.id);
+      return;
+    }
     void convertBlock(block.id, type);
   };
 

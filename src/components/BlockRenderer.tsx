@@ -7,6 +7,7 @@ import type { HiveBlock, RichTextItem } from "../lib/types";
 import { RichText } from "./RichText";
 import { EditableText } from "./EditableText";
 import { FallbackCard } from "./FallbackCard";
+import { DatabaseView } from "./DatabaseView";
 import { useAppStore } from "../store/appStore";
 
 /**
@@ -389,6 +390,8 @@ function SimpleTable({ block }: { block: HiveBlock }) {
 /** Tier 2 — render-only (Phase 3); tables gained editable cells later. */
 const TIER2: Record<string, BlockComponent> = {
   child_page: ({ block }) => <ChildPageCard block={block} />,
+  // block id IS the database id for a child_database block.
+  child_database: ({ block }) => <DatabaseView databaseId={block.id} />,
   image: ({ block }) => {
     const payload = block.image as {
       type?: string;

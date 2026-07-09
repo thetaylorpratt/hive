@@ -7,6 +7,7 @@ import { fetchFresh, loadCached, normalizePageId } from "../lib/fetchPage";
 import { DEMO_PAGE_ID, DEMO_VERSION, demoBlocks, demoPage } from "../lib/demoPage";
 import { upsertPageCache } from "../lib/db";
 import { blocksToPlainText, pageEmoji, pageTitle } from "../lib/pageMeta";
+import { createInlineDatabase } from "../lib/databaseApi";
 import { indexPageForSearch } from "../lib/db";
 import { recordHit } from "../lib/frecencyDb";
 import {
@@ -311,6 +312,7 @@ interface AppState {
   setDisplayPref: (key: "smallText" | "fullWidth", value: boolean) => void;
   movePageToSpace: (pageId: string, spaceId: string) => Promise<void>;
   createPage: (parentId: string | null) => Promise<void>;
+  createDatabaseInline: (afterBlockId: string) => Promise<void>;
   updatePageTitle: (title: string) => Promise<void>;
   createCapture: (text: string) => Promise<void>;
   closeSplit: () => void;
@@ -1216,6 +1218,22 @@ export const useAppStore = create<AppState>((set, get) => ({
         ? `Create failed: ${lastError instanceof Error ? lastError.message : lastError}`
         : "No parent page — set scratchpadPageId or capturePageId in config",
     );
+  },
+
+  createDatabaseInline: async (_afterBlockId: string) => {
+    const { pageId, auth } = get();
+    if (!pageId || pageId === DEMO_PAGE_ID || auth.status !== "ready") return;
+    try {
+      await createInlineDatabase(pageId, "Untitled");
+      get().showToast("Database created");
+      // Appended at the page end, not positioned after the block — a full
+      // reload is acceptable here only: db creation is rare.
+      await get().openPage(pageId);
+    } catch (err) {
+      get().showToast(
+        `Create failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
   },
 
   updatePageTitle: async (title: string) => {
