@@ -1225,10 +1225,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!pageId || pageId === DEMO_PAGE_ID || auth.status !== "ready") return;
     try {
       await createInlineDatabase(pageId, "Untitled");
-      get().showToast("Database created");
-      // Appended at the page end, not positioned after the block — a full
-      // reload is acceptable here only: db creation is rare.
+      // The API appends child_database blocks at the page end and offers no
+      // way to create or move them at a position — be honest and take the
+      // user there. A full reload is acceptable here only: creation is rare.
+      get().showToast("Database created at the end of the page (API places it there)");
       await get().openPage(pageId);
+      setTimeout(() => {
+        const grids = document.querySelectorAll(".hive-db");
+        grids[grids.length - 1]?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 600);
     } catch (err) {
       get().showToast(
         `Create failed: ${err instanceof Error ? err.message : err}`,

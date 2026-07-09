@@ -154,3 +154,88 @@ Grid (`<div class="hive-db">`):
   toast, then `openPage(pageId)` to refetch (db creation is rare; a reload
   is acceptable ONLY here).
 - Verify build passes.
+
+---
+
+# V2 — Notion-parity polish (round 2)
+
+User feedback: v1's editing/creating UX is "janky" vs Notion. This round
+restyles the grid to match Notion's table view and adds schema editing.
+
+## Newly verified API facts (live-tested 2026-07-09)
+
+- Rename column: `dataSources.update({ properties: { [oldName]: { name: newName } } })`
+- Change column type: `dataSources.update({ properties: { [name]: { name, type: "select", select: {} } } })`
+  — converts existing data where compatible (rich_text→select verified; options
+  backfill lazily). Formula/synced/place types cannot be written.
+- Delete column: `dataSources.update({ properties: { [name]: null } })`
+- Rename database title: `databases.update({ database_id, title: [{type:"text",text:{content}}] })` (works; also mirror to dataSources.update title)
+- Person cells: `pages.update({ properties: { [name]: { people: [{ id }] } } })`
+- Notion UX reference: blue "New" button top right; "+ New" row at table
+  bottom; property header click → menu with rename / change type / delete;
+  title cell hover shows OPEN button; cells edit strictly in place.
+
+## Contract additions (`src/lib/databaseApi.ts`)
+
+```ts
+export type PropertyDraft = /* existing kinds */ | { kind: "people"; ids: string[] };
+
+export const COLUMN_TYPE_META: Record<string, { label: string }>; // for header menus: title→"Title", rich_text→"Text", number→"Number", select→"Select", multi_select→"Multi-select", status→"Status", date→"Date", checkbox→"Checkbox", url→"URL", email→"Email", phone_number→"Phone", people→"Person" (others fall back to raw type string)
+
+export async function renameDatabase(databaseId: string, dataSourceId: string, title: string): Promise<void>; // databases.update AND dataSources.update (both titles)
+export async function renameColumn(schema: DbSchema, column: DbColumn, newName: string): Promise<void>;
+export async function changeColumnType(schema: DbSchema, column: DbColumn, newType: string): Promise<void>; // { name: column.name, type: newType, [newType]: {} }
+export async function deleteColumn(schema: DbSchema, column: DbColumn): Promise<void>;
+```
+- `CREATABLE_COLUMN_TYPES` gains "people".
+- `updateRowProperty` handles `people` drafts: `{ people: ids.map(id => ({ id })) }`.
+
+## DatabaseView v2 (full restyle + new interactions)
+
+Visual (match Notion's table view, dark+light via --hive-* tokens):
+- NO outer card/box; the grid sits flush on the page background.
+- Title bar above grid: inline-editable database title (h3 weight, muted
+  "Untitled" placeholder; commit on Enter/blur → renameDatabase) on the
+  left; a compact primary "New" button (accent bg) on the right that
+  creates a row and immediately starts editing its title.
+- Header cells: per-type icon + name, 0.8rem, --hive-color-fg-muted,
+  weight 500, hairline bottom border. Phosphor icon suggestions:
+  title→TextT, rich_text→TextAlignLeft, number→Hash, select→CaretCircleDown,
+  multi_select→ListBullets, status→ArrowClockwise, date→Calendar,
+  checkbox→CheckSquare, url→LinkSimple, email→At, phone_number→Phone,
+  people→User; anything else→Question.
+- Hairline borders both axes but ultra-subtle (--hive-color-border-subtle);
+  row hover = --hive-color-bg-subtle at low intensity.
+- Cell editing IN PLACE: the display and the editor occupy the same box —
+  editing swaps in a borderless input inheriting font/size with an inset
+  accent focus ring (box-shadow: inset 0 0 0 2px var(--hive-color-accent)),
+  no layout shift. Enter commits; Escape cancels; Tab commits and moves to
+  the next editable cell in the row (nice-to-have; skip if fragile).
+- Title cell: row icon + text; hover reveals a small "OPEN" pill button
+  (right-aligned in cell) → openPage(row.pageId).
+- Bottom of grid: full-width "+ New" muted row (like Notion) — same action
+  as the New button; keep "Load more" when hasMore, styled as a subtle row.
+- Remove the row-count badge from the head; instead a tiny muted
+  "{n} rows" at the bottom-left after the + New row.
+
+New interactions:
+- **Column header menu**: click a header → popover (click-away closes):
+  rename input (autofocus, Enter commits → renameColumn), a "Type" section
+  listing CREATABLE_COLUMN_TYPES with COLUMN_TYPE_META labels (current
+  type highlighted; click → changeColumnType, optimistic schema update,
+  refetch rows after success since values convert), and "Delete property"
+  in critical color (not shown for the title column). Rename-only for
+  title column.
+- **Person cells**: chips with a small initial-circle avatar; click →
+  dropdown (same pattern as select) searching `workspaceUsers()` from
+  ../lib/users; toggle membership; commit `{ kind: "people", ids }`.
+- **Add column** stays but restyled to match the header menu look.
+- Column ops are schema-wide: after changeColumnType succeeds, re-run
+  fetchDatabase (values may have converted server-side).
+
+## Integration (small, after the above)
+
+- `createDatabaseInline` in appStore: after the openPage reload, scroll the
+  last `.hive-db` into view and toast "Database created (Notion places new
+  databases at the end of the page)". The at-cursor position is an API
+  limitation: child_database blocks cannot be created or moved via REST.

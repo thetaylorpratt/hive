@@ -1,5 +1,7 @@
 /*
  * Database (table view) — `child_database` blocks (docs/DB_SPEC.md).
+ * V2: Notion-parity restyle — no outer card, flush on the page background,
+ * hairline grid, in-place cell editing (display + editor share one box).
  * Own namespace: every selector here is scoped under .hive-db* so nothing
  * bleeds into (or collides with) the simple-table styles in theme.css.
  */
@@ -7,35 +9,63 @@
 .hive-db {
   margin: 0.8em 0;
   font-size: 0.85rem;
-  border: 1px solid var(--hive-color-border-subtle);
-  border-radius: var(--hive-radius);
-  background: var(--hive-color-bg-surface);
-  overflow: hidden;
 }
 
-/* ---- header ---- */
+/* ---- title bar ---- */
 
-.hive-db-head {
+.hive-db-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0 8px;
+}
+.hive-db-title-display {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--hive-color-border-subtle);
-}
-.hive-db-title {
+  flex: 1;
+  margin: 0;
+  font-size: 1.05rem;
   font-weight: 600;
-  color: var(--hive-color-fg);
+  color: var(--hive-color-fg-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.hive-db-count {
-  margin-left: 4px;
-  font-size: 0.72rem;
-  color: var(--hive-color-fg-muted);
-  background: var(--hive-color-bg-subtle);
+  cursor: text;
   border-radius: var(--hive-radius-sm);
-  padding: 1px 6px;
+  padding: 2px 4px;
+  margin-left: -4px;
+}
+.hive-db-title-display:hover {
+  background: var(--hive-color-bg-subtle);
+}
+.hive-db-title-display.readonly {
+  cursor: default;
+}
+.hive-db-title-display.readonly:hover {
+  background: none;
+}
+.hive-db-title-input {
+  flex: 1;
+  font: inherit;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--hive-color-fg-primary);
+  border: none;
+  outline: none;
+  background: var(--hive-color-bg-surface);
+  border-radius: var(--hive-radius-sm);
+  padding: 2px 4px;
+  margin-left: -4px;
+  box-shadow: inset 0 0 0 2px var(--hive-color-accent);
+}
+.hive-db-new-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 6px 12px;
+  font-size: 0.8rem;
 }
 
 /* ---- table ---- */
@@ -66,25 +96,22 @@
   position: sticky;
   top: 0;
   z-index: 2;
-  background: var(--hive-color-bg-subtle);
-  border-bottom: 1px solid var(--hive-color-border);
+  background: var(--hive-color-bg-app, var(--hive-color-bg-surface));
+  border-bottom: 1px solid var(--hive-color-border-subtle);
   padding: 0;
   white-space: nowrap;
 }
-.hive-db-th {
+.hive-db-th-cell {
+  position: relative;
+}
+.hive-db-th-static {
   display: flex;
-  flex-direction: column;
-  gap: 1px;
+  align-items: center;
+  gap: 5px;
   padding: 6px 10px;
-}
-.hive-db-th .name {
-  font-weight: 600;
-  color: var(--hive-color-fg-secondary);
-}
-.hive-db-th .type {
-  font-size: 0.68rem;
+  font-size: 0.8rem;
+  font-weight: 500;
   color: var(--hive-color-fg-muted);
-  text-transform: capitalize;
 }
 .hive-db-th-add {
   width: 32px;
@@ -117,6 +144,35 @@
   color: var(--hive-color-critical-fg);
 }
 
+/* ---- header cell menu trigger ---- */
+
+.hive-db-th-menu {
+  position: relative;
+}
+.hive-db-th-trigger {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 5px;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--hive-color-fg-muted);
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+}
+.hive-db-th-trigger:hover {
+  color: var(--hive-color-fg-primary);
+  background: var(--hive-color-bg-subtle);
+}
+.hive-db-th-trigger .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ---- cell primitives ---- */
 
 .placeholder {
@@ -126,49 +182,65 @@
   display: block;
   min-height: 1.2em;
   cursor: text;
+  padding: 3px 6px;
+  margin: -3px -6px;
+  border-radius: var(--hive-radius-sm);
 }
 .hive-db-text.readonly {
   cursor: default;
   color: var(--hive-color-fg-muted);
 }
+/* Display and editor share identical box metrics (font, padding) so
+ * swapping between them causes no layout shift; the editor adds only an
+ * inset focus ring via box-shadow. */
 .hive-db-cell-input {
+  display: block;
+  width: 100%;
   font: inherit;
   font-size: 0.85rem;
-  width: 100%;
-  border: 1px solid var(--hive-color-accent);
-  border-radius: var(--hive-radius-sm);
-  padding: 3px 6px;
-  background: var(--hive-color-bg-surface);
   color: inherit;
+  border: none;
   outline: none;
+  padding: 3px 6px;
+  margin: -3px -6px;
+  border-radius: var(--hive-radius-sm);
+  background: var(--hive-color-bg-surface);
+  box-shadow: inset 0 0 0 2px var(--hive-color-accent);
 }
 
-.hive-db-title {
+.hive-db-title-cell {
   display: flex;
   align-items: center;
   gap: 6px;
 }
-.hive-db-title .hive-db-text {
+.hive-db-title-cell .hive-db-text {
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.hive-db-open {
-  border: none;
-  background: none;
-  cursor: pointer;
-  color: var(--hive-color-fg-muted);
-  opacity: 0;
-  padding: 2px;
+.hive-db-open-pill {
   display: inline-flex;
   align-items: center;
+  gap: 3px;
   flex-shrink: 0;
+  border: 1px solid var(--hive-color-border);
+  background: var(--hive-color-bg-surface);
+  color: var(--hive-color-fg-muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  border-radius: 999px;
+  padding: 2px 8px;
+  cursor: pointer;
+  opacity: 0;
 }
-.hive-db-title:hover .hive-db-open {
+.hive-db-title-cell:hover .hive-db-open-pill {
   opacity: 1;
 }
-.hive-db-open:hover {
+.hive-db-open-pill:hover {
   color: var(--hive-color-accent);
+  border-color: var(--hive-color-accent);
 }
 
 .hive-db-checkbox {
@@ -190,9 +262,10 @@
   background: var(--hive-color-bg-surface);
 }
 
-/* ---- select / status / multi-select ---- */
+/* ---- select / status / multi-select / people ---- */
 
-.hive-db-option-cell {
+.hive-db-option-cell,
+.hive-db-person-cell {
   position: relative;
 }
 .hive-db-option-trigger {
@@ -235,7 +308,30 @@
 .hive-db-chip[data-hive-color="pink"] { background: rgba(216, 27, 96, 0.16); color: #d81b60; }
 .hive-db-chip[data-hive-color="red"] { background: var(--hive-color-critical-bg); color: var(--hive-color-critical-fg); }
 
-/* ---- dropdowns (select / multi-select / add-column) ---- */
+.hive-db-person-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.78rem;
+  color: var(--hive-color-fg-secondary);
+  white-space: nowrap;
+}
+.hive-db-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--hive-color-accent-subtle);
+  color: var(--hive-color-accent);
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* ---- popovers (select / multi-select / people / header menu / add-column) ---- */
 /* Same feel as .hive-slash-menu (theme.css) but a distinct, owned class. */
 
 .hive-db-dropdown {
@@ -302,6 +398,64 @@
   font-size: 0.8rem;
 }
 
+/* ---- header menu: rename input + type list + delete ---- */
+
+.hive-db-th-pop {
+  min-width: 220px;
+}
+.hive-db-th-pop-label {
+  padding: 4px 6px 0;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--hive-color-fg-muted);
+}
+.hive-db-th-types {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.hive-db-th-type-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px;
+  border-radius: var(--hive-radius-sm);
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: var(--hive-color-fg-secondary);
+}
+.hive-db-th-type-row:hover {
+  background: var(--hive-color-bg-subtle);
+}
+.hive-db-th-type-row.current {
+  color: var(--hive-color-accent);
+}
+.hive-db-th-type-row span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hive-db-th-delete {
+  margin-top: 2px;
+  padding: 6px;
+  border: none;
+  border-top: 1px solid var(--hive-color-border-subtle);
+  background: none;
+  color: var(--hive-color-critical-fg);
+  font: inherit;
+  font-size: 0.82rem;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 0;
+}
+.hive-db-th-delete:hover {
+  background: var(--hive-color-critical-bg);
+}
+
 /* ---- add column ---- */
 
 .hive-db-addcol {
@@ -326,14 +480,11 @@
   right: 0;
   min-width: 220px;
 }
-.hive-db-addcol-pop select {
-  font: inherit;
-  font-size: 0.82rem;
-  border: 1px solid var(--hive-color-border);
-  border-radius: var(--hive-radius-sm);
-  padding: 4px 6px;
-  background: var(--hive-color-bg-surface);
-  color: inherit;
+.hive-db-addcol-submit {
+  margin-top: 2px;
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  align-self: flex-end;
 }
 
 /* ---- empty state ---- */
@@ -349,34 +500,38 @@
 
 .hive-db-bottom {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
+  flex-direction: column;
   border-top: 1px solid var(--hive-color-border-subtle);
 }
-.hive-db-newrow,
-.hive-db-loadmore {
-  display: inline-flex;
+.hive-db-newrow-row,
+.hive-db-loadmore-row {
+  display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  width: 100%;
   font: inherit;
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   border: none;
   background: none;
   color: var(--hive-color-fg-muted);
   cursor: pointer;
-  padding: 4px 6px;
-  border-radius: var(--hive-radius-sm);
+  padding: 7px 10px;
+  text-align: left;
 }
-.hive-db-newrow:hover,
-.hive-db-loadmore:hover {
-  color: var(--hive-color-accent);
+.hive-db-newrow-row:hover,
+.hive-db-loadmore-row:hover {
+  color: var(--hive-color-fg-primary);
   background: var(--hive-color-bg-subtle);
 }
-.hive-db-loadmore:disabled {
+.hive-db-loadmore-row:disabled {
   cursor: not-allowed;
   color: var(--hive-color-fg-muted);
   background: none;
+}
+.hive-db-rowcount {
+  padding: 4px 10px 2px;
+  font-size: 0.72rem;
+  color: var(--hive-color-fg-muted);
 }
 
 /* ---- error state ---- */
@@ -392,13 +547,13 @@
 
 /* ---- loading skeleton ---- */
 
-.hive-db-skeleton .hive-db-head {
-  border-bottom: none;
+.hive-db-skeleton .hive-db-titlebar {
+  padding-bottom: 10px;
 }
 .hive-db-skel-bar {
   display: inline-block;
   width: 140px;
-  height: 14px;
+  height: 16px;
   border-radius: var(--hive-radius-sm);
   background: var(--hive-color-bg-subtle);
   animation: hive-db-pulse 1.4s ease-in-out infinite;
@@ -407,7 +562,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 4px 12px 14px;
+  padding: 4px 0 14px;
 }
 .hive-db-skel-row {
   display: block;

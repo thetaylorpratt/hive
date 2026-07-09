@@ -1,5 +1,23 @@
 import { useContext, useEffect, useRef, useState } from "react";
-import { ArrowSquareOut, Check, Plus, X } from "@phosphor-icons/react";
+import {
+  ArrowSquareOut,
+  At,
+  ArrowClockwise,
+  Calendar,
+  CaretCircleDown,
+  Check,
+  CheckSquare,
+  Hash,
+  LinkSimple,
+  ListBullets,
+  Phone,
+  Plus,
+  Question,
+  TextAlignLeft,
+  TextT,
+  User,
+  X,
+} from "@phosphor-icons/react";
 import { useAppStore } from "../store/appStore";
 import { Glyph } from "../lib/iconSets";
 import { ReadOnlyContext } from "./BlockRenderer";
@@ -12,9 +30,16 @@ import {
   addColumn,
   addSelectOption,
   propertyToText,
+  renameDatabase,
+  renameColumn,
+  changeColumnType,
+  deleteColumn,
   CREATABLE_COLUMN_TYPES,
+  COLUMN_TYPE_META,
 } from "../lib/databaseApi";
 import type { DbSchema, DbColumn, DbRow, PropertyDraft } from "../lib/databaseApi";
+import { workspaceUsers, searchUsers } from "../lib/users";
+import type { WorkspaceUser } from "../lib/users";
 import "../styles/database.css";
 
 /**
@@ -91,12 +116,51 @@ function extractDateStart(prop: unknown): string {
   return typeof d === "string" ? d.slice(0, 10) : "";
 }
 
+function extractPeople(prop: unknown): { id: string; name: string }[] {
+  const arr = asObj(prop).people;
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .map((item) => {
+      const o = asObj(item);
+      return { id: str(o.id), name: str(o.name) || "Unknown" };
+    })
+    .filter((p) => p.id);
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0]!.slice(0, 1).toUpperCase();
+  return (parts[0]!.slice(0, 1) + parts[parts.length - 1]!.slice(0, 1)).toUpperCase();
+}
+
 function optionColor(column: DbColumn, name: string): string | undefined {
   return column.options?.find((o) => o.name === name)?.color;
 }
 
+/** Icon per Notion property type, for header cells (per-type icon + name). */
+const COLUMN_TYPE_ICONS: Record<string, typeof Question> = {
+  title: TextT,
+  rich_text: TextAlignLeft,
+  number: Hash,
+  select: CaretCircleDown,
+  multi_select: ListBullets,
+  status: ArrowClockwise,
+  date: Calendar,
+  checkbox: CheckSquare,
+  url: LinkSimple,
+  email: At,
+  phone_number: Phone,
+  people: User,
+};
+
+function typeIcon(type: string, size = 13) {
+  const Icon = COLUMN_TYPE_ICONS[type] ?? Question;
+  return <Icon size={size} />;
+}
+
 function typeLabel(type: string): string {
-  return type.replace(/_/g, " ");
+  return COLUMN_TYPE_META[type]?.label ?? type;
 }
 
 /** Mirrors the Notion property-value shapes closely enough that the
@@ -124,9 +188,32 @@ function applyDraftLocally(column: DbColumn, draft: PropertyDraft): unknown {
         column.type === "email" ? "email" : column.type === "phone_number" ? "phone_number" : "url";
       return { [key]: draft.s };
     }
+    case "people":
+      return { people: draft.ids.map((id) => ({ id })) };
     default:
       return {};
   }
+}
+
+/* ---------- lazily-loaded, module-cached workspace people list ---------- */
+
+let peopleListCache: WorkspaceUser[] | null = null;
+
+function usePeopleList(): { people: WorkspaceUser[]; ensureLoaded: () => void } {
+  const [people, setPeople] = useState<WorkspaceUser[]>(peopleListCache ?? []);
+  function ensureLoaded() {
+    if (peopleListCache) {
+      setPeople(peopleListCache);
+      return;
+    }
+    workspaceUsers()
+      .then((users) => {
+        peopleListCache = users;
+        setPeople(users);
+      })
+      .catch(() => {});
+  }
+  return { people, ensureLoaded };
 }
 
 interface CellCtx {
@@ -137,7 +224,7 @@ interface CellCtx {
   onChangeEditValue: (v: string) => void;
   onCommitEdit: (row: DbRow, column: DbColumn, value: string) => void;
   onCancelEdit: () => void;
-  onCommitProperty: (row: DbRow, column: DbColumn, draft: PropertyDraft) => void;
+  onCommitProperty: (row: DbRow, column: DbColumn, draft: PropertyDraft, localOverride?: unknown) => void;
   onCreateOption: (row: DbRow, column: DbColumn, name: string, multi: boolean) => void;
   onOpenPage: (pageId: string) => void;
 }
@@ -189,7 +276,7 @@ function TitleCell({ row, column, ctx }: { row: DbRow; column: DbColumn; ctx: Ce
     );
   }
   return (
-    <div className="hive-db-title">
+    <div className="hive-db-title-cell">
       <Glyph icon={row.icon} size={14} />
       <span
         className={ctx.canEdit ? "hive-db-text" : "hive-db-text readonly"}
@@ -200,14 +287,16 @@ function TitleCell({ row, column, ctx }: { row: DbRow; column: DbColumn; ctx: Ce
         {text || <span className="placeholder">Untitled</span>}
       </span>
       <button
-        className="hive-db-open"
+        type="button"
+        className="hive-db-open-pill"
         title="Open as page"
         onClick={(e) => {
           e.stopPropagation();
           ctx.onOpenPage(row.pageId);
         }}
       >
-        <ArrowSquareOut size={13} />
+        <ArrowSquareOut size={11} />
+        Open
       </button>
     </div>
   );
@@ -429,12 +518,107 @@ function OptionDropdown({
   );
 }
 
+function PersonCell({ row, column, ctx }: { row: DbRow; column: DbColumn; ctx: CellCtx }) {
+  const [open, setOpen] = useState(false);
+  const [filter, setFilter] = useState("");
+  const { people, ensureLoaded } = usePeopleList();
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) {
+        setOpen(false);
+        setFilter("");
+      }
+    };
+    window.addEventListener("mousedown", away);
+    return () => window.removeEventListener("mousedown", away);
+  }, [open]);
+
+  const current = extractPeople(row.properties[column.name]);
+  const currentIds = current.map((p) => p.id);
+  const filtered = searchUsers(people, filter);
+
+  function toggle(user: WorkspaceUser) {
+    const nextIds = currentIds.includes(user.id)
+      ? currentIds.filter((id) => id !== user.id)
+      : [...currentIds, user.id];
+    const nextPeople = nextIds
+      .map((id) => people.find((u) => u.id === id) ?? current.find((p) => p.id === id))
+      .filter((p): p is WorkspaceUser | { id: string; name: string } => Boolean(p));
+    ctx.onCommitProperty(
+      row,
+      column,
+      { kind: "people", ids: nextIds },
+      { people: nextPeople.map((p) => ({ id: p.id, name: p.name })) },
+    );
+  }
+
+  return (
+    <div className="hive-db-person-cell" ref={ref}>
+      <button
+        type="button"
+        className="hive-db-option-trigger"
+        disabled={!ctx.canEdit}
+        onClick={() => {
+          setOpen((o) => !o);
+          ensureLoaded();
+        }}
+      >
+        {current.length > 0 ? (
+          <span className="hive-db-chips">
+            {current.map((p) => (
+              <span key={p.id} className="hive-db-person-chip">
+                <span className="hive-db-avatar">{initials(p.name)}</span>
+                {p.name}
+              </span>
+            ))}
+          </span>
+        ) : (
+          <span className="placeholder">—</span>
+        )}
+      </button>
+      {open && ctx.canEdit && (
+        <div className="hive-db-dropdown">
+          <input
+            autoFocus
+            className="hive-db-dropdown-filter"
+            placeholder="Search people…"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setOpen(false);
+                setFilter("");
+              }
+            }}
+          />
+          <div className="hive-db-dropdown-list">
+            {filtered.map((u) => (
+              <div key={u.id} className="hive-db-dropdown-row" onClick={() => toggle(u)}>
+                <span className="hive-db-person-chip">
+                  <span className="hive-db-avatar">{initials(u.name)}</span>
+                  {u.name}
+                </span>
+                {currentIds.includes(u.id) && <Check size={12} />}
+              </div>
+            ))}
+            {filtered.length === 0 && <div className="hive-db-dropdown-empty">No people found</div>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CellSwitch({ row, column, ctx }: { row: DbRow; column: DbColumn; ctx: CellCtx }) {
   try {
     if (column.type === "title") return <TitleCell row={row} column={column} ctx={ctx} />;
     if (TEXT_LIKE.has(column.type)) return <TextCell row={row} column={column} ctx={ctx} />;
     if (column.type === "checkbox") return <CheckboxCell row={row} column={column} ctx={ctx} />;
     if (column.type === "date") return <DateCell row={row} column={column} ctx={ctx} />;
+    if (column.type === "people") return <PersonCell row={row} column={column} ctx={ctx} />;
     if (column.type === "select" || column.type === "status") {
       const name = extractSelectName(row.properties[column.name], column.type);
       return (
@@ -462,6 +646,107 @@ function CellSwitch({ row, column, ctx }: { row: DbRow; column: DbColumn; ctx: C
   } catch {
     return <span className="hive-db-text readonly">{safeText(row.properties[column.name])}</span>;
   }
+}
+
+/** Column header: click opens a popover with rename / change-type / delete.
+ * Title column is rename-only (no type change, no delete). */
+function ColumnHeaderMenu({
+  column,
+  onRenamed,
+  onTypeChanged,
+  onDeleted,
+}: {
+  column: DbColumn;
+  onRenamed: (column: DbColumn, newName: string) => void;
+  onTypeChanged: (column: DbColumn, newType: string) => void;
+  onDeleted: (column: DbColumn) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState(column.name);
+  const ref = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const isTitle = column.type === "title";
+
+  useEffect(() => {
+    if (!open) return;
+    setName(column.name);
+    const t = window.setTimeout(() => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }, 0);
+    const away = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener("mousedown", away);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener("mousedown", away);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  function commitRename() {
+    const trimmed = name.trim();
+    if (trimmed && trimmed !== column.name) onRenamed(column, trimmed);
+    setOpen(false);
+  }
+
+  return (
+    <div className="hive-db-th-menu" ref={ref}>
+      <button type="button" className="hive-db-th-trigger" onClick={() => setOpen((o) => !o)}>
+        {typeIcon(column.type)}
+        <span className="name">{column.name}</span>
+      </button>
+      {open && (
+        <div className="hive-db-dropdown hive-db-th-pop">
+          <input
+            ref={inputRef}
+            className="hive-input"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitRename();
+              if (e.key === "Escape") setOpen(false);
+            }}
+          />
+          {!isTitle && (
+            <>
+              <div className="hive-db-th-pop-label">Type</div>
+              <div className="hive-db-th-types">
+                {CREATABLE_COLUMN_TYPES.map((t) => {
+                  const current = t === column.type;
+                  return (
+                    <div
+                      key={t}
+                      className={current ? "hive-db-th-type-row current" : "hive-db-th-type-row"}
+                      onClick={() => {
+                        setOpen(false);
+                        if (!current) onTypeChanged(column, t);
+                      }}
+                    >
+                      {typeIcon(t)}
+                      <span>{typeLabel(t)}</span>
+                      {current && <Check size={12} />}
+                    </div>
+                  );
+                })}
+              </div>
+              <button
+                type="button"
+                className="hive-db-th-delete"
+                onClick={() => {
+                  setOpen(false);
+                  onDeleted(column);
+                }}
+              >
+                Delete property
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function AddColumnPopover({ schema, onAdded }: { schema: DbSchema; onAdded: () => void }) {
@@ -500,7 +785,7 @@ function AddColumnPopover({ schema, onAdded }: { schema: DbSchema; onAdded: () =
         <Plus size={13} />
       </button>
       {open && (
-        <div className="hive-db-dropdown hive-db-addcol-pop">
+        <div className="hive-db-dropdown hive-db-th-pop hive-db-addcol-pop">
           <input
             autoFocus
             className="hive-input"
@@ -512,14 +797,23 @@ function AddColumnPopover({ schema, onAdded }: { schema: DbSchema; onAdded: () =
               if (e.key === "Escape") setOpen(false);
             }}
           />
-          <select value={type} onChange={(e) => setType(e.target.value)}>
-            {CREATABLE_COLUMN_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {typeLabel(t)}
-              </option>
-            ))}
-          </select>
-          <button type="button" className="hive-btn" disabled={!name.trim()} onClick={submit}>
+          <div className="hive-db-th-types">
+            {CREATABLE_COLUMN_TYPES.map((t) => {
+              const selected = t === type;
+              return (
+                <div
+                  key={t}
+                  className={selected ? "hive-db-th-type-row current" : "hive-db-th-type-row"}
+                  onClick={() => setType(t)}
+                >
+                  {typeIcon(t)}
+                  <span>{typeLabel(t)}</span>
+                  {selected && <Check size={12} />}
+                </div>
+              );
+            })}
+          </div>
+          <button type="button" className="hive-btn hive-db-addcol-submit" disabled={!name.trim()} onClick={submit}>
             Add
           </button>
         </div>
@@ -544,6 +838,10 @@ export function DatabaseView({ databaseId }: { databaseId: string }) {
   const [editKey, setEditKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
 
+  const [titleEditing, setTitleEditing] = useState(false);
+  const [titleValue, setTitleValue] = useState("");
+  const titleInputRef = useRef<HTMLInputElement>(null);
+
   function load() {
     setLoading(true);
     setError(null);
@@ -563,6 +861,13 @@ export function DatabaseView({ databaseId }: { databaseId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [databaseId]);
 
+  useEffect(() => {
+    if (titleEditing) {
+      titleInputRef.current?.focus();
+      titleInputRef.current?.select();
+    }
+  }, [titleEditing]);
+
   function loadMore() {
     if (!schema || !cursor || loadingMore) return;
     setLoadingMore(true);
@@ -578,9 +883,9 @@ export function DatabaseView({ databaseId }: { databaseId: string }) {
       .finally(() => setLoadingMore(false));
   }
 
-  function commitProperty(row: DbRow, column: DbColumn, draft: PropertyDraft) {
+  function commitProperty(row: DbRow, column: DbColumn, draft: PropertyDraft, localOverride?: unknown) {
     const prevValue = row.properties[column.name];
-    const nextValue = applyDraftLocally(column, draft);
+    const nextValue = localOverride !== undefined ? localOverride : applyDraftLocally(column, draft);
     setRows((prev) =>
       prev.map((r) =>
         r.pageId === row.pageId
@@ -685,10 +990,97 @@ export function DatabaseView({ databaseId }: { databaseId: string }) {
       });
   }
 
+  function startTitleEdit() {
+    if (!schema) return;
+    setTitleValue(schema.title === "Untitled" ? "" : schema.title);
+    setTitleEditing(true);
+  }
+  function cancelTitleEdit() {
+    setTitleEditing(false);
+  }
+  function commitTitleEdit(value: string) {
+    setTitleEditing(false);
+    if (!schema) return;
+    const trimmed = value.trim();
+    const finalTitle = trimmed || "Untitled";
+    if (finalTitle === schema.title) return;
+    const prevTitle = schema.title;
+    setSchema((prev) => (prev ? { ...prev, title: finalTitle } : prev));
+    renameDatabase(schema.databaseId, schema.dataSourceId, finalTitle).catch((err) => {
+      setSchema((prev) => (prev ? { ...prev, title: prevTitle } : prev));
+      useAppStore.getState().showToast(`Couldn't rename database: ${msg(err)}`);
+    });
+  }
+
+  function handleRenameColumn(column: DbColumn, newName: string) {
+    if (!schema) return;
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === column.name) return;
+    const prevSchema = schema;
+    const prevRows = rows;
+    const isTitle = column.type === "title";
+    setSchema((prev) =>
+      prev
+        ? {
+            ...prev,
+            columns: prev.columns.map((c) => (c.id === column.id ? { ...c, name: trimmed } : c)),
+            titleColumnName: isTitle ? trimmed : prev.titleColumnName,
+          }
+        : prev,
+    );
+    setRows((prev) =>
+      prev.map((r) => {
+        if (!(column.name in r.properties)) return r;
+        const nextProps = { ...r.properties };
+        nextProps[trimmed] = nextProps[column.name];
+        delete nextProps[column.name];
+        return { ...r, properties: nextProps };
+      }),
+    );
+    renameColumn(schema, column, trimmed).catch((err) => {
+      setSchema(prevSchema);
+      setRows(prevRows);
+      useAppStore.getState().showToast(`Couldn't rename property: ${msg(err)}`);
+    });
+  }
+
+  function handleChangeColumnType(column: DbColumn, newType: string) {
+    if (!schema || newType === column.type) return;
+    const prevSchema = schema;
+    setSchema((prev) =>
+      prev
+        ? {
+            ...prev,
+            columns: prev.columns.map((c) =>
+              c.id === column.id ? { ...c, type: newType, options: undefined } : c,
+            ),
+          }
+        : prev,
+    );
+    changeColumnType(schema, column, newType)
+      .then(() => load())
+      .catch((err) => {
+        setSchema(prevSchema);
+        useAppStore.getState().showToast(`Couldn't change property type: ${msg(err)}`);
+      });
+  }
+
+  function handleDeleteColumn(column: DbColumn) {
+    if (!schema) return;
+    const prevSchema = schema;
+    setSchema((prev) =>
+      prev ? { ...prev, columns: prev.columns.filter((c) => c.id !== column.id) } : prev,
+    );
+    deleteColumn(schema, column).catch((err) => {
+      setSchema(prevSchema);
+      useAppStore.getState().showToast(`Couldn't delete property: ${msg(err)}`);
+    });
+  }
+
   if (loading) {
     return (
       <div className="hive-db hive-db-skeleton">
-        <div className="hive-db-head">
+        <div className="hive-db-titlebar">
           <span className="hive-db-skel-bar" />
         </div>
         <div className="hive-db-skel-rows">
@@ -737,24 +1129,65 @@ export function DatabaseView({ databaseId }: { databaseId: string }) {
 
   return (
     <div className="hive-db">
-      <div className="hive-db-head">
-        <Glyph icon={schema.icon} size={16} />
-        <span className="hive-db-title">{schema.title || "Untitled"}</span>
-        <span className="hive-db-count">
-          {rows.length}
-          {hasMore ? "+" : ""}
-        </span>
+      <div className="hive-db-titlebar">
+        {titleEditing ? (
+          <input
+            ref={titleInputRef}
+            className="hive-db-title-input"
+            value={titleValue}
+            onChange={(e) => setTitleValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commitTitleEdit(titleValue);
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                cancelTitleEdit();
+              }
+            }}
+            onBlur={() => commitTitleEdit(titleValue)}
+          />
+        ) : (
+          <h3
+            className={canEdit ? "hive-db-title-display" : "hive-db-title-display readonly"}
+            onClick={() => {
+              if (canEdit) startTitleEdit();
+            }}
+          >
+            <Glyph icon={schema.icon} size={16} />
+            {schema.title === "Untitled" ? (
+              <span className="placeholder">Untitled</span>
+            ) : (
+              schema.title
+            )}
+          </h3>
+        )}
+        {canEdit && (
+          <button type="button" className="hive-btn hive-db-new-btn" onClick={handleNewRow}>
+            <Plus size={13} weight="bold" />
+            New
+          </button>
+        )}
       </div>
       <div className="hive-db-tablewrap">
         <table className="hive-db-table">
           <thead>
             <tr>
               {schema.columns.map((column) => (
-                <th key={column.id}>
-                  <div className="hive-db-th">
-                    <span className="name">{column.name}</span>
-                    <span className="type">{typeLabel(column.type)}</span>
-                  </div>
+                <th key={column.id} className="hive-db-th-cell">
+                  {canEdit ? (
+                    <ColumnHeaderMenu
+                      column={column}
+                      onRenamed={handleRenameColumn}
+                      onTypeChanged={handleChangeColumnType}
+                      onDeleted={handleDeleteColumn}
+                    />
+                  ) : (
+                    <div className="hive-db-th-static">
+                      {typeIcon(column.type)}
+                      <span className="name">{column.name}</span>
+                    </div>
+                  )}
                 </th>
               ))}
               {canEdit && (
@@ -798,20 +1231,24 @@ export function DatabaseView({ databaseId }: { databaseId: string }) {
       </div>
       <div className="hive-db-bottom">
         {canEdit && (
-          <button type="button" className="hive-db-newrow" onClick={handleNewRow}>
-            <Plus size={13} /> New row
+          <button type="button" className="hive-db-newrow-row" onClick={handleNewRow}>
+            <Plus size={13} /> New
           </button>
         )}
         {hasMore && (
           <button
             type="button"
-            className="hive-db-loadmore"
+            className="hive-db-loadmore-row"
             onClick={loadMore}
             disabled={loadingMore}
           >
             {loadingMore ? "Loading…" : "Load more"}
           </button>
         )}
+        <div className="hive-db-rowcount">
+          {rows.length}
+          {hasMore ? "+" : ""} rows
+        </div>
       </div>
     </div>
   );

@@ -56,7 +56,8 @@ export type PropertyDraft =
   | { kind: "select"; name: string | null }
   | { kind: "multi_select"; names: string[] }
   | { kind: "date"; startIso: string | null }
-  | { kind: "link"; s: string | null };
+  | { kind: "link"; s: string | null }
+  | { kind: "people"; ids: string[] };
 
 export const EDITABLE_COLUMN_TYPES: Set<string> = new Set([
   "title",
@@ -80,7 +81,23 @@ export const CREATABLE_COLUMN_TYPES: string[] = [
   "date",
   "checkbox",
   "url",
+  "people",
 ];
+
+export const COLUMN_TYPE_META: Record<string, { label: string }> = {
+  title: { label: "Title" },
+  rich_text: { label: "Text" },
+  number: { label: "Number" },
+  select: { label: "Select" },
+  multi_select: { label: "Multi-select" },
+  status: { label: "Status" },
+  date: { label: "Date" },
+  checkbox: { label: "Checkbox" },
+  url: { label: "URL" },
+  email: { label: "Email" },
+  phone_number: { label: "Phone" },
+  people: { label: "Person" },
+};
 
 const PAGE_SIZE = 50;
 
@@ -285,6 +302,8 @@ function draftToPayload(column: DbColumn, draft: PropertyDraft): Record<string, 
     case "link":
       // url | email | phone_number all take the raw string (or null to clear)
       return { [column.type]: draft.s };
+    case "people":
+      return { people: draft.ids.map((id) => ({ id })) };
   }
 }
 
@@ -374,6 +393,62 @@ export async function addSelectOption(
     notion().dataSources.update({
       data_source_id: schema.dataSourceId,
       properties: { [column.name]: { [column.type]: { options } } },
+    } as never),
+  );
+}
+
+/* ---------- schema editing (V2) ---------- */
+
+export async function renameDatabase(
+  databaseId: string,
+  dataSourceId: string,
+  title: string,
+): Promise<void> {
+  await enqueue(() =>
+    notion().databases.update({
+      database_id: databaseId,
+      title: [{ type: "text", text: { content: title } }],
+    } as never),
+  );
+  await enqueue(() =>
+    notion().dataSources.update({
+      data_source_id: dataSourceId,
+      title: [{ type: "text", text: { content: title } }],
+    } as never),
+  );
+}
+
+export async function renameColumn(
+  schema: DbSchema,
+  column: DbColumn,
+  newName: string,
+): Promise<void> {
+  await enqueue(() =>
+    notion().dataSources.update({
+      data_source_id: schema.dataSourceId,
+      properties: { [column.name]: { name: newName } },
+    } as never),
+  );
+}
+
+export async function changeColumnType(
+  schema: DbSchema,
+  column: DbColumn,
+  newType: string,
+): Promise<void> {
+  await enqueue(() =>
+    notion().dataSources.update({
+      data_source_id: schema.dataSourceId,
+      properties: { [column.name]: { name: column.name, type: newType, [newType]: {} } },
+    } as never),
+  );
+}
+
+export async function deleteColumn(schema: DbSchema, column: DbColumn): Promise<void> {
+  await enqueue(() =>
+    notion().dataSources.update({
+      data_source_id: schema.dataSourceId,
+      properties: { [column.name]: null },
     } as never),
   );
 }
