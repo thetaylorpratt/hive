@@ -64,4 +64,18 @@ gh release create "$TAG" "$DMG" "$APPGZ" latest.json \
   --title "Hive $VERSION" \
   --notes "See README for install + setup. Auto-updates from here on."
 rm latest.json
+
+# Building the DMG mounts a volume that LaunchServices auto-registers; the
+# volume unmounts but the registration lingers at a dead /Volumes path. Left
+# unchecked these pile up (all claiming com.taylorpratt.hive), and macOS can
+# resolve the default-browser handler to a dead copy → link opens in Safari.
+# Detach any leftover build volume and re-assert the installed app as the
+# sole registration.
+LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+for v in /Volumes/dmg.*; do
+  [ -d "$v/Hive.app" ] && hdiutil detach "$v" -quiet 2>/dev/null || true
+done
+"$LSREGISTER" -u "$BUNDLE/macos/Hive.app" 2>/dev/null || true
+[ -d /Applications/Hive.app ] && "$LSREGISTER" -f /Applications/Hive.app || true
+
 echo "==> Done: https://github.com/thetaylorpratt/hive/releases/tag/$TAG"
