@@ -248,14 +248,45 @@ function SimpleTable({ block }: { block: HiveBlock }) {
   const setTableColumns = useAppStore((s) => s.setTableColumns);
   const updateTableSettings = useAppStore((s) => s.updateTableSettings);
   const deleteBlock = useAppStore((s) => s.deleteBlock);
+  const moveTableRow = useAppStore((s) => s.moveTableRow);
+  const moveTableColumn = useAppStore((s) => s.moveTableColumn);
   const payload = block.table as {
+    table_width?: number;
     has_column_header?: boolean;
     has_row_header?: boolean;
   };
   const rows = (block.children ?? []).filter((c) => c.type === "table_row");
+  const width = payload?.table_width ?? 2;
   return (
     <div className="hive-table-wrap">
       <table className="hive-table">
+        {canEdit && (
+          <thead>
+            <tr className="hive-col-gutter-row">
+              {Array.from({ length: width }, (_, ci) => (
+                <th key={ci}>
+                  <span className="hive-col-gutter">
+                    <button
+                      title="Move column left"
+                      disabled={ci === 0}
+                      onClick={() => void moveTableColumn(block.id, ci, "left")}
+                    >
+                      ‹
+                    </button>
+                    <button
+                      title="Move column right"
+                      disabled={ci === width - 1}
+                      onClick={() => void moveTableColumn(block.id, ci, "right")}
+                    >
+                      ›
+                    </button>
+                  </span>
+                </th>
+              ))}
+              <th />
+            </tr>
+          </thead>
+        )}
         <tbody>
           {rows.map((row, ri) => {
             const cells =
@@ -275,6 +306,20 @@ function SimpleTable({ block }: { block: HiveBlock }) {
                 })}
                 {canEdit && (
                   <td className="hive-row-gutter">
+                    <button
+                      title="Move row up"
+                      disabled={ri === 0}
+                      onClick={() => void moveTableRow(block.id, row.id, "up")}
+                    >
+                      ↑
+                    </button>
+                    <button
+                      title="Move row down"
+                      disabled={ri === rows.length - 1}
+                      onClick={() => void moveTableRow(block.id, row.id, "down")}
+                    >
+                      ↓
+                    </button>
                     <button
                       title="Add row below"
                       onClick={() => void addTableRow(block.id, row.id)}
@@ -327,6 +372,13 @@ function SimpleTable({ block }: { block: HiveBlock }) {
             }
           >
             header col
+          </button>
+          <button
+            className="danger"
+            title="Delete this table"
+            onClick={() => void deleteBlock(block.id)}
+          >
+            🗑 delete table
           </button>
         </div>
       )}

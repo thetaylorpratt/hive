@@ -423,46 +423,32 @@ export async function addTableRow(
  * ids. Caveat: comments anchored to the old table/rows are orphaned — the
  * unavoidable cost of the rebuild trick.
  */
-export async function setTableColumns(
+type TablePayload = {
+  table_width: number;
+  has_column_header?: boolean;
+  has_row_header?: boolean;
+};
+
+/**
+ * table_width is immutable and there's no row-move / column-move endpoint,
+ * so every structural table change (resize, reorder rows, reorder columns)
+ * is a rebuild: append a fresh table under the SAME parent, then delete the
+ * old one, then remap the new ids in place. Two hard-won rules baked in:
+ * the append must target the table's real parent (not always the page, or
+ * you get a duplicate "at the bottom"), and ids are remapped locally rather
+ * than reloading the page (which discarded edits in flight elsewhere).
+ */
+function rebuildTableRemote(
   pageId: string,
   blocks: HiveBlock[],
   tableId: string,
-  newWidth: number,
+  payload: TablePayload,
+  rows: RichTextItem[][][],
+  localRowIds: string[],
   sink: WriteSink,
-): Promise<WriteResult & { remap?: Promise<Map<string, string> | null> }> {
-  if (newWidth < 1) return { blocks, remote: Promise.resolve() };
-  let payload: { table_width: number; has_column_header?: boolean; has_row_header?: boolean } | null = null;
-  const localRowIds: string[] = [];
-  const rows: RichTextItem[][][] = [];
-  const resize = (cells: RichTextItem[][]) =>
-    Array.from({ length: newWidth }, (_, i) => cells[i] ?? []);
-
-  const next = mapTree(blocks, (b) => {
-    if (b.id === tableId) {
-      const table = b.table as typeof payload;
-      payload = { ...table!, table_width: newWidth };
-      const children = (b.children ?? []).map((row) => {
-        const cells = resize(
-          ((row.table_row as { cells?: RichTextItem[][] })?.cells) ?? [],
-        );
-        rows.push(cells);
-        localRowIds.push(row.id);
-        return { ...row, table_row: { cells } };
-      });
-      return { ...b, table: payload as never, children };
-    }
-    return b;
-  });
-  await persist(pageId, next);
-
-  // table_width is immutable on the API, so a column change means rebuild:
-  // append a fresh table then delete the old one. Two things that used to
-  // break this (duplicate table "at the bottom", lost edits): (1) the new
-  // table must go under the SAME parent as the original, not always the
-  // page; (2) resync must remap ids in place, never reload the whole page.
-  const canRebuild = sink === "notion" && payload && !tableId.startsWith("local-");
-  if (!canRebuild) return { blocks: next, remote: Promise.resolve() };
-
+): { remote: Promise<void>; remap?: Promise<Map<string, string> | null> } {
+  const canRebuild = sink === "notion" && !tableId.startsWith("local-");
+  if (!canRebuild) return { remote: Promise.resolve() };
   const parentId = findParentOf(blocks, tableId)?.id ?? pageId;
   const remap = (async (): Promise<Map<string, string> | null> => {
     const appended = (await enqueue(() =>
@@ -483,13 +469,10 @@ export async function setTableColumns(
     )) as { results?: { id?: string }[] };
     const newTableId = appended.results?.[0]?.id;
     if (!newTableId) return null;
-    // fetch the new row ids so cell edits target live blocks, not the
-    // just-deleted originals
     const rowResp = (await enqueue(() =>
       notion().blocks.children.list({ block_id: newTableId, page_size: 100 }),
     )) as { results?: { id?: string }[] };
     const newRowIds = (rowResp.results ?? []).map((r) => r.id).filter(Boolean) as string[];
-    // delete the original only AFTER the replacement is confirmed
     await enqueue(() => notion().blocks.delete({ block_id: tableId }));
     const mapping = new Map<string, string>();
     mapping.set(tableId, newTableId);
@@ -498,8 +481,112 @@ export async function setTableColumns(
     });
     return mapping;
   })();
+  return { remote: remap.then(() => undefined), remap };
+}
 
-  return { blocks: next, remote: remap.then(() => undefined), remap };
+export async function setTableColumns(
+  pageId: string,
+  blocks: HiveBlock[],
+  tableId: string,
+  newWidth: number,
+  sink: WriteSink,
+): Promise<WriteResult & { remap?: Promise<Map<string, string> | null> }> {
+  if (newWidth < 1) return { blocks, remote: Promise.resolve() };
+  let payload: TablePayload | null = null;
+  const localRowIds: string[] = [];
+  const rows: RichTextItem[][][] = [];
+  const resize = (cells: RichTextItem[][]) =>
+    Array.from({ length: newWidth }, (_, i) => cells[i] ?? []);
+
+  const next = mapTree(blocks, (b) => {
+    if (b.id === tableId) {
+      payload = { ...(b.table as TablePayload), table_width: newWidth };
+      const children = (b.children ?? []).map((row) => {
+        const cells = resize(
+          ((row.table_row as { cells?: RichTextItem[][] })?.cells) ?? [],
+        );
+        rows.push(cells);
+        localRowIds.push(row.id);
+        return { ...row, table_row: { cells } };
+      });
+      return { ...b, table: payload as never, children };
+    }
+    return b;
+  });
+  await persist(pageId, next);
+  if (!payload) return { blocks: next, remote: Promise.resolve() };
+  const { remote, remap } = rebuildTableRemote(
+    pageId, blocks, tableId, payload, rows, localRowIds, sink,
+  );
+  return { blocks: next, remote, remap };
+}
+
+/** Move a table row up or down (rebuild — no row-move endpoint exists). */
+export async function moveTableRow(
+  pageId: string,
+  blocks: HiveBlock[],
+  tableId: string,
+  rowId: string,
+  dir: "up" | "down",
+  sink: WriteSink,
+): Promise<WriteResult & { remap?: Promise<Map<string, string> | null> }> {
+  const table = findWithPrev(blocks, tableId)?.block;
+  if (!table) return { blocks, remote: Promise.resolve() };
+  const children = [...(table.children ?? [])];
+  const i = children.findIndex((r) => r.id === rowId);
+  const j = dir === "up" ? i - 1 : i + 1;
+  if (i < 0 || j < 0 || j >= children.length) {
+    return { blocks, remote: Promise.resolve() };
+  }
+  [children[i], children[j]] = [children[j], children[i]];
+  const next = mapTree(blocks, (b) => (b.id === tableId ? { ...b, children } : b));
+  await persist(pageId, next);
+  const payload = table.table as TablePayload;
+  const rows = children.map(
+    (r) => ((r.table_row as { cells?: RichTextItem[][] })?.cells) ?? [],
+  );
+  const localRowIds = children.map((r) => r.id);
+  const { remote, remap } = rebuildTableRemote(
+    pageId, blocks, tableId, payload, rows, localRowIds, sink,
+  );
+  return { blocks: next, remote, remap };
+}
+
+/** Move a table column left or right (rebuild — reorders every row's cells). */
+export async function moveTableColumn(
+  pageId: string,
+  blocks: HiveBlock[],
+  tableId: string,
+  colIndex: number,
+  dir: "left" | "right",
+  sink: WriteSink,
+): Promise<WriteResult & { remap?: Promise<Map<string, string> | null> }> {
+  const table = findWithPrev(blocks, tableId)?.block;
+  if (!table) return { blocks, remote: Promise.resolve() };
+  const payload = table.table as TablePayload;
+  const target = dir === "left" ? colIndex - 1 : colIndex + 1;
+  if (colIndex < 0 || target < 0 || target >= payload.table_width) {
+    return { blocks, remote: Promise.resolve() };
+  }
+  const swap = (cells: RichTextItem[][]) => {
+    const c = [...cells];
+    [c[colIndex], c[target]] = [c[target] ?? [], c[colIndex] ?? []];
+    return c;
+  };
+  const children = (table.children ?? []).map((row) => ({
+    ...row,
+    table_row: {
+      cells: swap(((row.table_row as { cells?: RichTextItem[][] })?.cells) ?? []),
+    },
+  }));
+  const next = mapTree(blocks, (b) => (b.id === tableId ? { ...b, children } : b));
+  await persist(pageId, next);
+  const rows = children.map((r) => r.table_row.cells);
+  const localRowIds = children.map((r) => r.id);
+  const { remote, remap } = rebuildTableRemote(
+    pageId, blocks, tableId, payload, rows, localRowIds, sink,
+  );
+  return { blocks: next, remote, remap };
 }
 
 /** Duplicate a text-class block (or simple table) right below itself. */

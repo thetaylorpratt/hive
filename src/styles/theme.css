@@ -2004,6 +2004,48 @@ tr:hover .hive-row-gutter {
   color: var(--hive-color-fg-muted);
 }
 
+/* Table column-move gutter (header row of arrow controls) */
+.hive-col-gutter-row th {
+  padding: 0 0 2px;
+  border: none;
+  background: none;
+}
+.hive-col-gutter {
+  display: flex;
+  justify-content: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.hive-table-wrap:hover .hive-col-gutter {
+  opacity: 0.65;
+}
+.hive-col-gutter button,
+.hive-row-gutter button {
+  border: none;
+  background: var(--hive-color-bg-subtle);
+  border-radius: var(--hive-radius-sm);
+  cursor: pointer;
+  font-size: 0.75rem;
+  line-height: 1;
+  padding: 2px 5px;
+  color: var(--hive-color-fg-secondary);
+}
+.hive-col-gutter button:disabled,
+.hive-row-gutter button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.hive-col-gutter button:hover:not(:disabled),
+.hive-row-gutter button:hover:not(:disabled) {
+  background: var(--hive-color-border);
+  color: var(--hive-color-fg-primary);
+}
+.hive-table-controls button.danger:hover {
+  background: var(--hive-color-critical-bg);
+  color: var(--hive-color-critical-fg);
+}
+
 /* Mention-capable comment input */
 .hive-mention-input {
   position: relative;

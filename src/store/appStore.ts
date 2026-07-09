@@ -130,6 +130,32 @@ async function applyWrite(
   });
 }
 
+/** Apply a table-rebuild's id remap to the live tree (table + row ids),
+ * surgically — never a full page reload, which would drop in-flight edits. */
+function applyTableRemap(
+  get: () => AppState,
+  set: (partial: Partial<AppState>) => void,
+  pageId: string,
+  remap?: Promise<Map<string, string> | null>,
+) {
+  if (!remap) return;
+  void remap
+    .then((mapping) => {
+      if (!mapping || get().pageId !== pageId) return;
+      const current = get();
+      if (!current.page) return;
+      set({
+        page: {
+          ...current.page,
+          blocks: writeback.remapIds(current.page.blocks, mapping),
+        },
+      });
+    })
+    .catch((err) =>
+      set({ writeError: `Save failed: ${err instanceof Error ? err.message : err}` }),
+    );
+}
+
 function applySpaceAccent(space: Space | undefined) {
   document.documentElement.dataset.spaceAccent = space?.color ?? "sky";
 }
@@ -223,6 +249,8 @@ interface AppState {
   ) => Promise<void>;
   addTableRow: (tableId: string, afterRowId: string | null) => Promise<void>;
   setTableColumns: (tableId: string, delta: 1 | -1) => Promise<void>;
+  moveTableRow: (tableId: string, rowId: string, dir: "up" | "down") => Promise<void>;
+  moveTableColumn: (tableId: string, colIndex: number, dir: "left" | "right") => Promise<void>;
   duplicateBlock: (blockId: string) => Promise<void>;
   updateTableSettings: (
     tableId: string,
@@ -925,26 +953,31 @@ export const useAppStore = create<AppState>((set, get) => ({
     );
     if (get().pageId !== pageId) return;
     set({ page: { ...page, blocks: result.blocks }, writeError: null });
-    // The rebuild assigns new table/row ids — remap them in the local tree
-    // (surgical) rather than reloading the page, which would discard any
-    // edits in flight on other blocks.
-    if (result.remap) {
-      void result.remap
-        .then((mapping) => {
-          if (!mapping || get().pageId !== pageId) return;
-          const current = get();
-          if (!current.page) return;
-          set({
-            page: {
-              ...current.page,
-              blocks: writeback.remapIds(current.page.blocks, mapping),
-            },
-          });
-        })
-        .catch((err) =>
-          set({ writeError: `Save failed: ${err instanceof Error ? err.message : err}` }),
-        );
-    }
+    applyTableRemap(get, set, pageId, result.remap);
+    });
+  },
+
+  moveTableRow: async (tableId, rowId, dir) => {
+    await chainWrite(async () => {
+      const { pageId, page, auth } = get();
+      if (!pageId || !page) return;
+      const sink = writeback.sinkFor(pageId, auth.status === "ready");
+      const result = await writeback.moveTableRow(pageId, page.blocks, tableId, rowId, dir, sink);
+      if (get().pageId !== pageId) return;
+      set({ page: { ...page, blocks: result.blocks }, writeError: null });
+      applyTableRemap(get, set, pageId, result.remap);
+    });
+  },
+
+  moveTableColumn: async (tableId, colIndex, dir) => {
+    await chainWrite(async () => {
+      const { pageId, page, auth } = get();
+      if (!pageId || !page) return;
+      const sink = writeback.sinkFor(pageId, auth.status === "ready");
+      const result = await writeback.moveTableColumn(pageId, page.blocks, tableId, colIndex, dir, sink);
+      if (get().pageId !== pageId) return;
+      set({ page: { ...page, blocks: result.blocks }, writeError: null });
+      applyTableRemap(get, set, pageId, result.remap);
     });
   },
 

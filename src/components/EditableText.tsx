@@ -86,6 +86,71 @@ function emojiContext(): {
   };
 }
 
+/** Caret geometry helpers for cross-block arrow navigation. Each block is
+ * its own contentEditable, so the browser can't walk the caret between
+ * them — we detect edge lines and hand focus to the neighbouring block. */
+function caretIsCollapsed(): boolean {
+  const sel = window.getSelection();
+  return !!sel && sel.isCollapsed && sel.rangeCount > 0;
+}
+
+function caretRect(): DOMRect | null {
+  const sel = window.getSelection();
+  if (!sel?.rangeCount) return null;
+  const r = sel.getRangeAt(0).cloneRange();
+  r.collapse(true);
+  const rects = r.getClientRects();
+  return rects.length ? rects[0] : null;
+}
+
+function caretAtStart(el: HTMLElement): boolean {
+  const sel = window.getSelection();
+  if (!sel?.rangeCount) return false;
+  const r = document.createRange();
+  r.selectNodeContents(el);
+  r.setEnd(sel.getRangeAt(0).startContainer, sel.getRangeAt(0).startOffset);
+  return r.toString().length === 0;
+}
+
+function caretAtEnd(el: HTMLElement): boolean {
+  const sel = window.getSelection();
+  if (!sel?.rangeCount) return false;
+  const r = document.createRange();
+  r.selectNodeContents(el);
+  r.setStart(sel.getRangeAt(0).endContainer, sel.getRangeAt(0).endOffset);
+  return r.toString().length === 0;
+}
+
+function caretOnFirstLine(el: HTMLElement): boolean {
+  const cr = caretRect();
+  if (!cr) return true; // empty block
+  return cr.top - el.getBoundingClientRect().top < 10;
+}
+
+function caretOnLastLine(el: HTMLElement): boolean {
+  const cr = caretRect();
+  if (!cr) return true;
+  return el.getBoundingClientRect().bottom - cr.bottom < 10;
+}
+
+/** Move focus to the adjacent editable block, placing the caret at the far
+ * edge so it reads as one continuous document. Returns false if none. */
+function focusAdjacentEditable(current: HTMLElement, dir: "prev" | "next"): boolean {
+  const all = [...document.querySelectorAll<HTMLElement>(".hive-editable")];
+  const i = all.indexOf(current);
+  const target = dir === "prev" ? all[i - 1] : all[i + 1];
+  if (!target) return false;
+  target.focus({ preventScroll: true });
+  const sel = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(target);
+  range.collapse(dir === "next"); // next → caret at START, prev → at END
+  sel?.removeAllRanges();
+  sel?.addRange(range);
+  target.scrollIntoView({ block: "nearest" });
+  return true;
+}
+
 /** The `@name` under the caret, if any — "@" must start a word. */
 function mentionContext(): {
   node: Text;
@@ -521,6 +586,26 @@ export function EditableText({
       // other keys fall through — typing keeps filtering via onInput
     }
 
+    // Cross-block caret navigation: blocks are separate contentEditables,
+    // so the browser stops the caret at each block's edge. Carry it into
+    // the neighbour when an arrow would otherwise dead-end.
+    if (
+      !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey &&
+      ref.current &&
+      caretIsCollapsed()
+    ) {
+      const el = ref.current;
+      if (e.key === "ArrowUp" && caretOnFirstLine(el)) {
+        if (focusAdjacentEditable(el, "prev")) { e.preventDefault(); return; }
+      } else if (e.key === "ArrowDown" && caretOnLastLine(el)) {
+        if (focusAdjacentEditable(el, "next")) { e.preventDefault(); return; }
+      } else if (e.key === "ArrowLeft" && caretAtStart(el)) {
+        if (focusAdjacentEditable(el, "prev")) { e.preventDefault(); return; }
+      } else if (e.key === "ArrowRight" && caretAtEnd(el)) {
+        if (focusAdjacentEditable(el, "next")) { e.preventDefault(); return; }
+      }
+    }
+
     // inline formatting (Notion parity: ⌘B/I/U, ⌘⇧S strike, ⌘E code)
     if ((e.metaKey || e.ctrlKey) && !e.altKey) {
       const k = e.key.toLowerCase();
@@ -676,10 +761,20 @@ export function EditableText({
         onKeyDown={onKeyDown}
         onMouseUp={(e) => {
           // WKWebView responder guard: a click can place the caret without
-          // moving activeElement off <body> — re-assert real focus so the
-          // sync guard and blur/commit lifecycle see this block as active.
-          if (document.activeElement !== e.currentTarget) {
-            e.currentTarget.focus({ preventScroll: true });
+          // moving activeElement off <body>. Re-assert focus so the sync
+          // guard and blur/commit lifecycle see this block as active — but
+          // .focus() collapses the selection to the element start in WebKit,
+          // so capture the click's caret first and restore it after.
+          const el = e.currentTarget;
+          if (document.activeElement !== el) {
+            const sel = window.getSelection();
+            const saved =
+              sel && sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
+            el.focus({ preventScroll: true });
+            if (saved) {
+              sel!.removeAllRanges();
+              sel!.addRange(saved);
+            }
           }
           updateToolbar();
         }}
