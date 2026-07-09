@@ -422,6 +422,16 @@ export async function createFolder(spaceId: string, name: string): Promise<Folde
   return folder;
 }
 
+export async function renameFolder(id: string, name: string): Promise<void> {
+  if ((await backend()) === "sql") {
+    await db!.execute("UPDATE folder SET name = $1 WHERE id = $2", [name, id]);
+  } else {
+    const f = local!.folders.find((x) => x.id === id);
+    if (f) f.name = name;
+    persistLocal();
+  }
+}
+
 export async function deleteFolder(id: string): Promise<void> {
   // Items inside are re-homed to the folder's list root, not deleted.
   if ((await backend()) === "sql") {

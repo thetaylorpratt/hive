@@ -11,6 +11,7 @@ export function PageMenu({ onClose }: { onClose: () => void }) {
   const prefs = useAppStore((s) => s.displayPrefs);
   const spaces = useAppStore((s) => s.spaces);
   const activeSpaceId = useAppStore((s) => s.activeSpaceId);
+  const folders = useAppStore((s) => s.folders);
   const realPage = pageId !== DEMO_PAGE_ID;
 
   useEffect(() => {
@@ -80,6 +81,14 @@ export function PageMenu({ onClose }: { onClose: () => void }) {
             void store.getState().movePageToSpace(pageId, sp.id);
           }),
         )}
+      {realPage &&
+        folders
+          .slice(0, 4)
+          .map((f) =>
+            item(`File into 📁 ${f.name} (Hive only)`, () => {
+              void store.getState().filePageIntoFolder(f.id);
+            }),
+          )}
       {realPage &&
         item("Move to another page…", () => store.getState().setMovePageOpen(true))}
       {item("New sub-page", () => void store.getState().createPage(pageId))}

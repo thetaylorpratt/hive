@@ -192,6 +192,8 @@ interface AppState {
   moveItemToFolder: (itemId: string, folderId: string | null) => Promise<void>;
   createFolder: () => Promise<void>;
   deleteFolder: (folderId: string) => Promise<void>;
+  renameFolder: (folderId: string, name: string) => Promise<void>;
+  filePageIntoFolder: (folderId: string) => Promise<void>;
   toggleSidebar: () => void;
   setSidebarWidth: (width: number) => void;
   setCommandBarOpen: (open: boolean) => void;
@@ -670,6 +672,35 @@ export const useAppStore = create<AppState>((set, get) => ({
   deleteFolder: async (folderId: string) => {
     await org.deleteFolder(folderId);
     await get().refreshSidebar();
+  },
+
+  renameFolder: async (folderId: string, name: string) => {
+    const clean = name.trim();
+    if (!clean) return;
+    await org.renameFolder(folderId, clean);
+    await get().refreshSidebar();
+  },
+
+  /** Pin the current page and file it into a folder — the no-drag path. */
+  filePageIntoFolder: async (folderId: string) => {
+    const { pageId, sidebarItems, activeSpaceId } = get();
+    if (!pageId || pageId === DEMO_PAGE_ID || !activeSpaceId) return;
+    let item = sidebarItems.find((i) => i.notionPageId === pageId);
+    if (!item) {
+      const { page } = get();
+      const title = page ? pageTitle(page.page) : "Untitled";
+      await org.touchToday(activeSpaceId, pageId, title, page ? pageEmoji(page.page) : null);
+      await get().refreshSidebar();
+      item = get().sidebarItems.find((i) => i.notionPageId === pageId);
+    }
+    if (!item) return;
+    if (item.tier !== "pinned") await get().setItemTier(item.id, "pinned");
+    await get().moveItemToFolder(
+      get().sidebarItems.find((i) => i.notionPageId === pageId)?.id ?? item.id,
+      folderId,
+    );
+    const folder = get().folders.find((f) => f.id === folderId);
+    get().showToast(`Filed into ${folder?.name ?? "folder"}`);
   },
 
   toggleSidebar: () => {

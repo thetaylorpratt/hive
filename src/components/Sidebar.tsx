@@ -159,10 +159,13 @@ function FolderBlock({
 }) {
   const [open, setOpen] = useState(true);
   const [dropping, setDropping] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [draft, setDraft] = useState(name);
   const moveItemToFolder = useAppStore((s) => s.moveItemToFolder);
   const setItemTier = useAppStore((s) => s.setItemTier);
   const sidebarItems = useAppStore((s) => s.sidebarItems);
   const deleteFolder = useAppStore((s) => s.deleteFolder);
+  const renameFolder = useAppStore((s) => s.renameFolder);
 
   return (
     <div className={`hive-folder${dropping ? " dropping" : ""}`}>
@@ -189,7 +192,35 @@ function FolderBlock({
         }}
       >
         <span className="chevron">{open ? "▾" : "▸"}</span>
-        <span className="title">{name}</span>
+        {renaming ? (
+          <input
+            className="hive-input"
+            autoFocus
+            value={draft}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={() => {
+              setRenaming(false);
+              void renameFolder(folderId, draft);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              if (e.key === "Escape") setRenaming(false);
+            }}
+          />
+        ) : (
+          <span
+            className="title"
+            title="Double-click to rename"
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              setDraft(name);
+              setRenaming(true);
+            }}
+          >
+            {name}
+          </span>
+        )}
         <span className="actions" onClick={(e) => e.stopPropagation()}>
           <button
             title="Delete folder (items are kept)"
