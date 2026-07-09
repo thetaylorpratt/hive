@@ -420,6 +420,22 @@ export default function App() {
   useEffect(() => {
     void init();
     installDebugTaps();
+    // Global link routing: WKWebView asks the OS to open external links,
+    // but the OS default browser IS Hive — macOS refuses the self-open and
+    // falls back to Safari. Intercept every anchor click ourselves: Notion
+    // links open in Hive, everything else forwards to the fallback browser.
+    const onLinkClick = (e: MouseEvent) => {
+      const a = (e.target as HTMLElement)?.closest?.("a[href]") as HTMLAnchorElement | null;
+      if (!a) return;
+      const href = a.getAttribute("href") ?? "";
+      if (!/^https?:\/\//i.test(href)) return;
+      e.preventDefault();
+      const id = /notion\.(so|com)/i.test(href) ? normalizePageId(href) : null;
+      if (id) void useAppStore.getState().openPage(id);
+      else void invoke("forward_url", { url: href }).catch(() => undefined);
+    };
+    document.addEventListener("click", onLinkClick, true);
+    return () => document.removeEventListener("click", onLinkClick, true);
   }, [init]);
 
   // URL routing (built-in Finicky). Hive handles hive:// deep links AND —
