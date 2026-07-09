@@ -1,4 +1,5 @@
-import { useContext, useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   ArrowSquareOut,
   At,
@@ -218,6 +219,62 @@ function usePeopleList(): { people: WorkspaceUser[]; ensureLoaded: () => void } 
   return { people, ensureLoaded };
 }
 
+/**
+ * Popovers portal to <body> with fixed positioning from the anchor's rect.
+ * Rendering them inline (position:absolute) let the table cell's
+ * `overflow:hidden` (for text ellipsis) clip them away — invisible and
+ * unclickable in WebKit (Chromium was more forgiving, which hid the bug).
+ * A portal escapes both the cell clip and the scroll-container clip.
+ */
+function Popover({
+  anchorRef,
+  onClose,
+  align = "left",
+  children,
+}: {
+  anchorRef: React.RefObject<HTMLElement | null>;
+  onClose: () => void;
+  align?: "left" | "right";
+  children: React.ReactNode;
+}) {
+  const popRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const anchor = anchorRef.current;
+    if (!anchor) return;
+    const r = anchor.getBoundingClientRect();
+    const top = Math.min(r.bottom + 4, window.innerHeight - 60);
+    const rawLeft = align === "right" ? r.right - 240 : r.left;
+    const left = Math.max(8, Math.min(rawLeft, window.innerWidth - 260));
+    setPos({ top, left });
+  }, [anchorRef, align]);
+
+  useEffect(() => {
+    const away = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (popRef.current?.contains(t) || anchorRef.current?.contains(t)) return;
+      onClose();
+    };
+    window.addEventListener("mousedown", away, true);
+    window.addEventListener("scroll", onClose, true);
+    window.addEventListener("resize", onClose);
+    return () => {
+      window.removeEventListener("mousedown", away, true);
+      window.removeEventListener("scroll", onClose, true);
+      window.removeEventListener("resize", onClose);
+    };
+  }, [anchorRef, onClose]);
+
+  if (!pos) return null;
+  return createPortal(
+    <div ref={popRef} className="hive-db-portal" style={{ position: "fixed", top: pos.top, left: pos.left, zIndex: 1000 }}>
+      {children}
+    </div>,
+    document.body,
+  );
+}
+
 interface CellCtx {
   canEdit: boolean;
   editKey: string | null;
@@ -411,19 +468,11 @@ function OptionDropdown({
 }) {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const away = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) {
-        setOpen(false);
-        setFilter("");
-      }
-    };
-    window.addEventListener("mousedown", away);
-    return () => window.removeEventListener("mousedown", away);
-  }, [open]);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const close = () => {
+    setOpen(false);
+    setFilter("");
+  };
 
   const options = column.options ?? [];
   const trimmedFilter = filter.trim();
@@ -458,8 +507,9 @@ function OptionDropdown({
   }
 
   return (
-    <div className="hive-db-option-cell" ref={ref}>
+    <div className="hive-db-option-cell">
       <button
+        ref={triggerRef}
         type="button"
         className="hive-db-option-trigger"
         disabled={!ctx.canEdit}
@@ -478,6 +528,7 @@ function OptionDropdown({
         )}
       </button>
       {open && ctx.canEdit && (
+        <Popover anchorRef={triggerRef} onClose={close}>
         <div className="hive-db-dropdown">
           <input
             autoFocus
@@ -487,8 +538,7 @@ function OptionDropdown({
             onChange={(e) => setFilter(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Escape") {
-                setOpen(false);
-                setFilter("");
+                close();
               } else if (e.key === "Enter") {
                 if (trimmedFilter && !exactMatch && canCreate) createAndPick();
               }
@@ -531,6 +581,7 @@ function OptionDropdown({
             )}
           </div>
         </div>
+        </Popover>
       )}
     </div>
   );
@@ -540,19 +591,11 @@ function PersonCell({ row, column, ctx }: { row: DbRow; column: DbColumn; ctx: C
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const { people, ensureLoaded } = usePeopleList();
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const away = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) {
-        setOpen(false);
-        setFilter("");
-      }
-    };
-    window.addEventListener("mousedown", away);
-    return () => window.removeEventListener("mousedown", away);
-  }, [open]);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const close = () => {
+    setOpen(false);
+    setFilter("");
+  };
 
   const current = extractPeople(row.properties[column.name]);
   const currentIds = current.map((p) => p.id);
@@ -574,8 +617,9 @@ function PersonCell({ row, column, ctx }: { row: DbRow; column: DbColumn; ctx: C
   }
 
   return (
-    <div className="hive-db-person-cell" ref={ref}>
+    <div className="hive-db-person-cell">
       <button
+        ref={triggerRef}
         type="button"
         className="hive-db-option-trigger"
         disabled={!ctx.canEdit}
@@ -598,6 +642,7 @@ function PersonCell({ row, column, ctx }: { row: DbRow; column: DbColumn; ctx: C
         )}
       </button>
       {open && ctx.canEdit && (
+        <Popover anchorRef={triggerRef} onClose={close}>
         <div className="hive-db-dropdown">
           <input
             autoFocus
@@ -606,10 +651,7 @@ function PersonCell({ row, column, ctx }: { row: DbRow; column: DbColumn; ctx: C
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                setOpen(false);
-                setFilter("");
-              }
+              if (e.key === "Escape") close();
             }}
           />
           <div className="hive-db-dropdown-list">
@@ -625,6 +667,7 @@ function PersonCell({ row, column, ctx }: { row: DbRow; column: DbColumn; ctx: C
             {filtered.length === 0 && <div className="hive-db-dropdown-empty">No people found</div>}
           </div>
         </div>
+        </Popover>
       )}
     </div>
   );
@@ -681,7 +724,7 @@ function ColumnHeaderMenu({
 }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(column.name);
-  const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const isTitle = column.type === "title";
 
@@ -692,14 +735,7 @@ function ColumnHeaderMenu({
       inputRef.current?.focus();
       inputRef.current?.select();
     }, 0);
-    const away = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
-    };
-    window.addEventListener("mousedown", away);
-    return () => {
-      window.clearTimeout(t);
-      window.removeEventListener("mousedown", away);
-    };
+    return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -710,12 +746,13 @@ function ColumnHeaderMenu({
   }
 
   return (
-    <div className="hive-db-th-menu" ref={ref}>
-      <button type="button" className="hive-db-th-trigger" onClick={() => setOpen((o) => !o)}>
+    <div className="hive-db-th-menu">
+      <button ref={triggerRef} type="button" className="hive-db-th-trigger" onClick={() => setOpen((o) => !o)}>
         {typeIcon(column.type)}
         <span className="name">{column.name}</span>
       </button>
       {open && (
+        <Popover anchorRef={triggerRef} onClose={() => setOpen(false)}>
         <div className="hive-db-dropdown hive-db-th-pop">
           <input
             ref={inputRef}
@@ -762,6 +799,7 @@ function ColumnHeaderMenu({
             </>
           )}
         </div>
+        </Popover>
       )}
     </div>
   );
@@ -771,16 +809,7 @@ function AddColumnPopover({ schema, onAdded }: { schema: DbSchema; onAdded: () =
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [type, setType] = useState<string>(CREATABLE_COLUMN_TYPES[0] ?? "rich_text");
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const away = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
-    };
-    window.addEventListener("mousedown", away);
-    return () => window.removeEventListener("mousedown", away);
-  }, [open]);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   function submit() {
     const trimmed = name.trim();
@@ -793,8 +822,9 @@ function AddColumnPopover({ schema, onAdded }: { schema: DbSchema; onAdded: () =
   }
 
   return (
-    <div className="hive-db-addcol" ref={ref}>
+    <div className="hive-db-addcol">
       <button
+        ref={triggerRef}
         type="button"
         className="hive-db-addcol-btn"
         title="Add column"
@@ -803,6 +833,7 @@ function AddColumnPopover({ schema, onAdded }: { schema: DbSchema; onAdded: () =
         <Plus size={13} />
       </button>
       {open && (
+        <Popover anchorRef={triggerRef} onClose={() => setOpen(false)} align="right">
         <div className="hive-db-dropdown hive-db-th-pop hive-db-addcol-pop">
           <input
             autoFocus
@@ -835,6 +866,7 @@ function AddColumnPopover({ schema, onAdded }: { schema: DbSchema; onAdded: () =
             Add
           </button>
         </div>
+        </Popover>
       )}
     </div>
   );

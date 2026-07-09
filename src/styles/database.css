@@ -339,10 +339,8 @@
 /* Same feel as .hive-slash-menu (theme.css) but a distinct, owned class. */
 
 .hive-db-dropdown {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  z-index: 500;
+  /* positioned by the portal wrapper (.hive-db-portal) so the table cell's
+     overflow:hidden can't clip it — WebKit clipped the old absolute box. */
   min-width: 200px;
   max-width: 280px;
   background: var(--hive-color-bg-surface);
@@ -504,8 +502,6 @@
   color: var(--hive-color-accent);
 }
 .hive-db-addcol-pop {
-  left: auto;
-  right: 0;
   min-width: 220px;
 }
 .hive-db-addcol-submit {
