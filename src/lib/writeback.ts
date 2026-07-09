@@ -121,12 +121,24 @@ export function hasPendingTextWrites(): boolean {
   return pendingTextWrites.size > 0 || pendingLocalText.size > 0;
 }
 
-/** After an id remap, send any text buffered under the old local id. */
+/** After an id remap, re-target pending text at the new id: text buffered
+ * under a local- id, AND any coalesced write still scheduled under the old
+ * remote id — firing that one would 400 with "Can't edit block that is
+ * archived" (the recreate trick deletes the old block). */
 export function flushPendingLocalText(fromId: string, toId: string) {
   const buffered = pendingLocalText.get(fromId);
   pendingLocalText.delete(fromId);
   if (buffered) {
     void scheduleTextWrite(toId, buffered.type, buffered.richText).catch(() => {});
+  }
+  const scheduled = pendingTextWrites.get(fromId);
+  if (scheduled) {
+    clearTimeout(scheduled.timer);
+    pendingTextWrites.delete(fromId);
+    void scheduleTextWrite(toId, scheduled.payload.type, scheduled.payload.richText).then(
+      () => scheduled.waiters.forEach((w) => w.resolve()),
+      (e) => scheduled.waiters.forEach((w) => w.reject(e)),
+    );
   }
 }
 
@@ -716,6 +728,9 @@ export async function moveBlock(
     // Recreate would drop the subtree on Notion — refuse rather than diverge.
     return { blocks, remote: Promise.resolve() };
   }
+  // Its content is recreated from the current model — a coalesced write
+  // still queued for the old id would hit an archived block.
+  cancelPendingTextWrite(recreated.id);
   const next = [...blocks];
   [next[index], next[swapWith]] = [next[swapWith], next[index]];
   await persist(pageId, next);
@@ -771,6 +786,9 @@ export async function indentBlock(
   if (!CAN_PARENT.has(prev.type) || moving.children?.length) {
     return { blocks, remote: Promise.resolve() };
   }
+  // recreated from the model — a queued write on the old id would hit an
+  // archived block after the recreate deletes it
+  cancelPendingTextWrite(blockId);
   const next = mapTree(removeFromTree(blocks, blockId), (b) =>
     b.id === prev.id
       ? { ...b, has_children: true, children: [...(b.children ?? []), moving] }
@@ -815,6 +833,8 @@ export async function outdentBlock(
   if (!parent) return { blocks, remote: Promise.resolve() };
   const parentBlock: HiveBlock = parent;
   const moving = parentBlock.children!.find((c) => c.id === blockId)!;
+  // recreated from the model — see indentBlock
+  cancelPendingTextWrite(blockId);
 
   const stripped = mapTree(blocks, (b) =>
     b.id === parentBlock.id
