@@ -12,6 +12,8 @@ import { SplitPane } from "./components/SplitPane";
 import { CommentsPanel } from "./components/CommentsPanel";
 import { MovePageModal } from "./components/MovePageModal";
 import { InboxPanel } from "./components/InboxPanel";
+import { DigestPanel } from "./components/DigestPanel";
+import { BacklinksSection } from "./components/BacklinksSection";
 import { CaptureModal } from "./components/CaptureModal";
 import { HomeScreen } from "./components/HomeScreen";
 import { EmojiPicker } from "./components/EmojiPicker";
@@ -331,6 +333,7 @@ function Content() {
         </h1>
         <PropertiesHeader page={page.page} />
         <SubPages />
+        <BacklinksSection pageId={(page.page as { id?: string }).id ?? ""} />
         <div
           className="mb-4"
           style={{ fontSize: "0.75rem", color: "var(--hive-color-fg-muted)" }}
@@ -553,6 +556,17 @@ export default function App() {
     return () => uninstall?.();
   }, []);
 
+  // Menu-bar tray items (Check for Updates…) emit events handled here.
+  useEffect(() => {
+    let uninstall: (() => void) | undefined;
+    void import("./lib/trayEvents")
+      .then(async (m) => {
+        uninstall = await m.installTrayListeners();
+      })
+      .catch(() => undefined);
+    return () => uninstall?.();
+  }, []);
+
   useEffect(() => {
     return installKeymap((action) => {
       const s = useAppStore.getState();
@@ -590,6 +604,7 @@ export default function App() {
       <Toast />
       <ShortcutSheet />
       <InboxPanel />
+      <DigestPanel />
       <CaptureModal />
       <PeekLayer />
     </div>

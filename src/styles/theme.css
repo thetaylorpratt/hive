@@ -2624,6 +2624,24 @@ kbd {
   color: var(--hive-color-warning-fg);
 }
 
+/* ---- offline-writes pending chip (header) ---- */
+
+.hive-unsynced-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--hive-font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  padding: 1px 7px;
+  border-radius: var(--hive-radius-sm);
+  background: var(--hive-color-warning-bg);
+  color: var(--hive-color-warning-fg);
+  margin-right: 8px;
+  white-space: nowrap;
+}
+
 /* ---- cold-load skeleton (title bar + lines, shimmer) ---- */
 
 .hive-skeleton {

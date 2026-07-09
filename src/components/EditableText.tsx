@@ -7,6 +7,8 @@ import { ReadOnlyContext } from "./BlockRenderer";
 import { selectableBlockIds, useAppStore } from "../store/appStore";
 import { htmlToRichText, richTextToHtml } from "../lib/richTextHtml";
 import { searchEmoji } from "../lib/emoji";
+import { normalizePageId } from "../lib/fetchPage";
+import { resolvePageTitle } from "../lib/linkTitle";
 import { RichText } from "./RichText";
 import type { HiveBlock, RichTextItem } from "../lib/types";
 import "../styles/selection.css";
@@ -196,6 +198,25 @@ function mentionContext(): {
     end: range.startOffset,
     query: match[1] ?? "",
   };
+}
+
+/** Matches only when the WHOLE trimmed clipboard is one notion.so/notion.com
+ * URL — anchored, and \S+ can't cross whitespace, so multi-line or
+ * multi-word pastes (which must fall through to normal paste) never match. */
+const NOTION_URL_RE = /^https?:\/\/(?:[a-z0-9-]+\.)?notion\.(?:so|com)\/\S+$/i;
+
+/** "notion.so/Some-Page-title…" — Notion's own paste-preview shorthand,
+ * shown until resolvePageTitle() upgrades the anchor to the real title. */
+function shortNotionLabel(url: string): string {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./, "");
+    const last = u.pathname.split("/").filter(Boolean).pop() ?? "";
+    const clipped = last.length > 40 ? `${last.slice(0, 37)}...` : last;
+    return clipped ? `${host}/${clipped}` : host;
+  } catch {
+    return url;
+  }
 }
 
 /**
@@ -548,6 +569,90 @@ export function EditableText({
     dirty.current = true;
   };
 
+  /** Inserts a titled-link-in-progress anchor at the current selection,
+   * replacing any selected content first. Mirrors insertMention's mechanics
+   * exactly (text-node split + replaceChild/insertBefore chain, trailing
+   * space, dirty flag) — that path is WebKit-proven; a generic
+   * Range.insertNode rewrite was deliberately avoided here so this stays on
+   * the same proven rails. Returns false (no-op) if the selection isn't
+   * inside this block, so the caller can fall through to default paste. */
+  const insertPastedLink = (url: string, pageId: string): boolean => {
+    const el = ref.current;
+    const sel = window.getSelection();
+    if (!el || !sel?.rangeCount) return false;
+    const range = sel.getRangeAt(0);
+    if (!el.contains(range.commonAncestorContainer)) return false;
+    if (!range.collapsed) range.deleteContents();
+
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.dataset.hivePendingTitle = pageId;
+    anchor.textContent = shortNotionLabel(url);
+
+    const startContainer = range.startContainer;
+    if (startContainer.nodeType === Node.TEXT_NODE) {
+      // caret sits inside existing text — split it around the anchor,
+      // exactly as insertMention splits the "@query" text node.
+      const node = startContainer as Text;
+      const offset = range.startOffset;
+      const text = node.textContent ?? "";
+      const before = document.createTextNode(text.slice(0, offset));
+      const after = document.createTextNode(` ${text.slice(offset)}`);
+      const parent = node.parentNode;
+      if (!parent) return false;
+      parent.replaceChild(after, node);
+      parent.insertBefore(anchor, after);
+      parent.insertBefore(before, anchor);
+      const newRange = document.createRange();
+      newRange.setStart(after, 1);
+      newRange.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(newRange);
+    } else {
+      // empty block, or caret between element children (no text node yet)
+      const parent = startContainer as Element;
+      const refChild = parent.childNodes[range.startOffset] ?? null;
+      const space = document.createTextNode(" ");
+      parent.insertBefore(space, refChild);
+      parent.insertBefore(anchor, space);
+      const newRange = document.createRange();
+      newRange.setStart(space, 1);
+      newRange.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(newRange);
+    }
+    dirty.current = true;
+    return true;
+  };
+
+  /** Paste interception: a bare Notion URL (and nothing else) upgrades to a
+   * titled link automatically, Notion's "link to page" without the menu. */
+  const onPaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    const text = e.clipboardData.getData("text/plain");
+    const trimmed = text.trim();
+    if (!trimmed || !NOTION_URL_RE.test(trimmed)) return; // fall through
+    const pageId = normalizePageId(trimmed);
+    if (!pageId) return; // notion.so/com URL, but not a page (e.g. a view)
+    e.preventDefault();
+    if (!insertPastedLink(trimmed, pageId)) return;
+    void resolvePageTitle(pageId).then((title) => {
+      if (!title) return;
+      const el = ref.current;
+      if (!el) return; // block unmounted since the paste
+      const pending = el.querySelector<HTMLAnchorElement>(
+        `a[data-hive-pending-title="${pageId}"]`,
+      );
+      if (!pending) return; // user deleted it, or it was never mounted here
+      pending.textContent = title;
+      pending.removeAttribute("data-hive-pending-title");
+      // Same external-commit path used to flush a block before an id remap
+      // (see the "hive-commit-block" listener above) — the async title
+      // resolution can land long after this block last had focus, so we
+      // can't rely on the normal blur-triggered commit() to ever fire.
+      commitRef.current();
+    });
+  };
+
   const insertEmoji = (char: string) => {
     const ctx = emojiContext();
     setEmojiMenu(null);
@@ -812,6 +917,7 @@ export function EditableText({
           commit();
         }}
         onKeyDown={onKeyDown}
+        onPaste={onPaste}
         onMouseUp={(e) => {
           // A shift+click or click-drag range-select (src/lib/keymap.ts)
           // already blurred us and set a block selection on this same

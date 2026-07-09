@@ -104,6 +104,9 @@ function useActions(): Result[] {
     )),
     action("New Space", "✨", () => void store.getState().createSpace()),
     action("New folder", "📁", () => void store.getState().createFolder()),
+    action("While you were away", "🐝", () =>
+      void import("./DigestPanel").then((m) => m.useDigestStore.getState().setOpen(true)),
+    ),
     action("Open demo / test page", "🧪", () => void store.getState().openDemo()),
     action("Toggle sidebar", "◧", () => store.getState().toggleSidebar(), "⌘\\"),
     action("Focus mode", "🎯", () => store.getState().toggleFocusMode(), "⌘⇧F"),

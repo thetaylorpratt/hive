@@ -3,6 +3,7 @@ import { enqueue } from "./queue";
 import { updateCachedBlocks } from "./db";
 import { toApiRichText } from "./richTextHtml";
 import { DEMO_PAGE_ID } from "./demoPage";
+import { runOrQueue, isWriteOffline } from "./offlineWrites";
 import type { HiveBlock, RichTextItem } from "./types";
 
 /**
@@ -17,6 +18,15 @@ import type { HiveBlock, RichTextItem } from "./types";
  *
  * Never writes organizational state — this is content-plane only, and only
  * for blocks the user explicitly edited.
+ *
+ * Offline writes (ARCHITECTURE.md offline-writes addendum): the ops above —
+ * id-stable, replay-safe — route their remote call through
+ * offlineWrites.runOrQueue so a network-shaped failure queues the write
+ * instead of surfacing an error; they replay in order once back online.
+ * Every other op below (moves, indents, converts, table structure,
+ * duplicate, restore — anything needing a fresh id from a live round trip)
+ * refuses outright while offline via an isWriteOffline() guard rather than
+ * attempting temp-id reconciliation.
  */
 
 export type WriteSink = "notion" | "local";
@@ -37,6 +47,9 @@ export const EDITABLE_TYPES = new Set([
   "quote",
   "callout",
 ]);
+
+const OFFLINE_BLOCKED_MESSAGE =
+  "You're offline — this change needs a connection. Your text edits will sync when you're back.";
 
 /* ---------- tree helpers (blocks nest via .children) ---------- */
 
@@ -166,13 +179,15 @@ function scheduleTextWrite(
       waiters,
       timer: setTimeout(() => {
         pendingTextWrites.delete(blockId);
-        enqueue(() =>
-          notion().blocks.update({
-            block_id: blockId,
-            [entry.payload.type]: {
-              rich_text: toApiRichText(entry.payload.richText),
-            },
-          } as never),
+        const payload = {
+          [entry.payload.type]: {
+            rich_text: toApiRichText(entry.payload.richText),
+          },
+        };
+        runOrQueue({ kind: "block_update", blockId, payload }, () =>
+          enqueue(() =>
+            notion().blocks.update({ block_id: blockId, ...payload } as never),
+          ),
         ).then(
           () => entry.waiters.forEach((w) => w.resolve()),
           (err) => entry.waiters.forEach((w) => w.reject(err)),
@@ -226,12 +241,16 @@ export async function toggleTodo(
   await persist(pageId, next);
   const remote =
     sink === "notion" && !blockId.startsWith("local-")
-      ? enqueue(() =>
-          notion().blocks.update({
-            block_id: blockId,
-            to_do: { checked },
-          } as never),
-        ).then(() => undefined)
+      ? runOrQueue(
+          { kind: "block_update", blockId, payload: { to_do: { checked } } },
+          () =>
+            enqueue(() =>
+              notion().blocks.update({
+                block_id: blockId,
+                to_do: { checked },
+              } as never),
+            ),
+        )
       : Promise.resolve();
   return { blocks: next, remote };
 }
@@ -261,6 +280,7 @@ export async function insertParagraphAfter(
   sink: WriteSink,
   type = "paragraph", // Notion parity: Enter in a list continues the list
 ): Promise<WriteResult & { newBlockId: string; remoteId: Promise<string | null> }> {
+  if (isWriteOffline()) throw new Error(OFFLINE_BLOCKED_MESSAGE);
   // `after` must be a direct child of the append target: resolve the real
   // parent for nested siblings instead of always appending to the page.
   const parentBlock = findParentOf(blocks, afterId);
@@ -368,12 +388,16 @@ export async function updatePageIcon(
   }
   const remote =
     sink === "notion"
-      ? enqueue(() =>
-          notion().pages.update({
-            page_id: pageId,
-            icon: iconPayload,
-          } as never),
-        ).then(() => undefined)
+      ? runOrQueue(
+          { kind: "page_update", pageId, payload: { icon: iconPayload } },
+          () =>
+            enqueue(() =>
+              notion().pages.update({
+                page_id: pageId,
+                icon: iconPayload,
+              } as never),
+            ),
+        )
       : Promise.resolve();
   return { page: nextPage, remote };
 }
@@ -389,6 +413,7 @@ export async function addTableRow(
   afterRowId: string | null,
   sink: WriteSink,
 ): Promise<WriteResult & { newRowId: string }> {
+  if (isWriteOffline()) throw new Error(OFFLINE_BLOCKED_MESSAGE);
   let width = 2;
   const localId = `local-${crypto.randomUUID()}`;
   const next = mapTree(blocks, (b) => {
@@ -505,6 +530,7 @@ export async function setTableColumns(
   newWidth: number,
   sink: WriteSink,
 ): Promise<WriteResult & { remap?: Promise<Map<string, string> | null> }> {
+  if (isWriteOffline()) throw new Error(OFFLINE_BLOCKED_MESSAGE);
   if (newWidth < 1) return { blocks, remote: Promise.resolve() };
   let payload: TablePayload | null = null;
   const localRowIds: string[] = [];
@@ -544,6 +570,7 @@ export async function moveTableRow(
   dir: "up" | "down",
   sink: WriteSink,
 ): Promise<WriteResult & { remap?: Promise<Map<string, string> | null> }> {
+  if (isWriteOffline()) throw new Error(OFFLINE_BLOCKED_MESSAGE);
   const table = findWithPrev(blocks, tableId)?.block;
   if (!table) return { blocks, remote: Promise.resolve() };
   const children = [...(table.children ?? [])];
@@ -575,6 +602,7 @@ export async function moveTableColumn(
   dir: "left" | "right",
   sink: WriteSink,
 ): Promise<WriteResult & { remap?: Promise<Map<string, string> | null> }> {
+  if (isWriteOffline()) throw new Error(OFFLINE_BLOCKED_MESSAGE);
   const table = findWithPrev(blocks, tableId)?.block;
   if (!table) return { blocks, remote: Promise.resolve() };
   const payload = table.table as TablePayload;
@@ -610,6 +638,7 @@ export async function duplicateBlock(
   blockId: string,
   sink: WriteSink,
 ): Promise<WriteResult> {
+  if (isWriteOffline()) throw new Error(OFFLINE_BLOCKED_MESSAGE);
   const found = findWithPrev(blocks, blockId);
   if (!found) return { blocks, remote: Promise.resolve() };
   const source = found.block;
@@ -676,6 +705,7 @@ export async function updateTableSettings(
   patch: { has_column_header?: boolean; has_row_header?: boolean },
   sink: WriteSink,
 ): Promise<WriteResult> {
+  if (isWriteOffline()) throw new Error(OFFLINE_BLOCKED_MESSAGE);
   const next = mapTree(blocks, (b) =>
     b.id === tableId ? { ...b, table: { ...(b.table as object), ...patch } } : b,
   );
@@ -717,6 +747,7 @@ export async function moveBlock(
   direction: "up" | "down",
   sink: WriteSink,
 ): Promise<WriteResult & { remap?: Promise<RemapResult> }> {
+  if (isWriteOffline()) throw new Error(OFFLINE_BLOCKED_MESSAGE);
   const index = blocks.findIndex((b) => b.id === blockId);
   if (index === -1) return { blocks, remote: Promise.resolve() }; // top-level only in v1
   const swapWith = direction === "up" ? index - 1 : index + 1;
@@ -765,6 +796,7 @@ export async function indentBlock(
   blockId: string,
   sink: WriteSink,
 ): Promise<WriteResult & { remap?: Promise<RemapResult> }> {
+  if (isWriteOffline()) throw new Error(OFFLINE_BLOCKED_MESSAGE);
   const scan = (list: HiveBlock[]): { list: HiveBlock[]; i: number } | null => {
     const i = list.findIndex((b) => b.id === blockId);
     if (i !== -1) return { list, i };
@@ -823,6 +855,7 @@ export async function outdentBlock(
   blockId: string,
   sink: WriteSink,
 ): Promise<WriteResult & { remap?: Promise<RemapResult> }> {
+  if (isWriteOffline()) throw new Error(OFFLINE_BLOCKED_MESSAGE);
   // find parent whose children contain blockId (top level = not outdentable)
   let parent: HiveBlock | null = null;
   const walk = (list: HiveBlock[]) => {
@@ -886,17 +919,24 @@ export async function updateTableCell(
     return { ...b, table_row: { cells } };
   });
   await persist(pageId, next);
-  const remote =
-    sink === "notion" && updatedCells && !rowId.startsWith("local-")
-      ? enqueue(() =>
+  let remote: Promise<void> = Promise.resolve();
+  if (sink === "notion" && updatedCells && !rowId.startsWith("local-")) {
+    // `as` (not `!`) here: updatedCells is a `let` mutated inside the
+    // mapTree callback above, and TS's control-flow narrowing mis-narrows a
+    // closure-mutated `let` to `never` on a truthy check (reproduced in
+    // isolation) — a plain non-null assertion inherits that same `never`.
+    const apiCells = (updatedCells as RichTextItem[][]).map((cell) => toApiRichText(cell));
+    remote = runOrQueue(
+      { kind: "block_update", blockId: rowId, payload: { table_row: { cells: apiCells } } },
+      () =>
+        enqueue(() =>
           notion().blocks.update({
             block_id: rowId,
-            table_row: {
-              cells: updatedCells!.map((cell) => toApiRichText(cell)),
-            },
+            table_row: { cells: apiCells },
           } as never),
-        ).then(() => undefined)
-      : Promise.resolve();
+        ),
+    );
+  }
   return { blocks: next, remote };
 }
 
@@ -916,6 +956,7 @@ export async function convertBlockType(
   richText: RichTextItem[],
   sink: WriteSink,
 ): Promise<WriteResult & { remoteId: Promise<string | null> }> {
+  if (isWriteOffline()) throw new Error(OFFLINE_BLOCKED_MESSAGE);
   cancelPendingTextWrite(blockId); // the old block is about to be replaced
   const noText = newType === "divider" || newType === "table";
   const payload = { ...emptyPayload(newType), ...(noText ? {} : { rich_text: richText }) };
@@ -980,6 +1021,7 @@ export async function restoreBlock(
   afterId: string | null,
   sink: WriteSink,
 ): Promise<WriteResult> {
+  if (isWriteOffline()) throw new Error(OFFLINE_BLOCKED_MESSAGE);
   // The API can only append (after a sibling or at the end) — when the
   // block was first, place it at the end locally too so both sides agree.
   const next = afterId
@@ -1043,8 +1085,8 @@ export async function deleteBlock(
   await persist(pageId, next);
   const remote =
     sink === "notion" && !blockId.startsWith("local-")
-      ? enqueue(() => notion().blocks.delete({ block_id: blockId })).then(
-          () => undefined,
+      ? runOrQueue({ kind: "block_delete", blockId }, () =>
+          enqueue(() => notion().blocks.delete({ block_id: blockId })),
         )
       : Promise.resolve();
   return { blocks: next, remote };

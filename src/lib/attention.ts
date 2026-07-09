@@ -54,6 +54,10 @@ export function noteEditTime(pageId: string, editedTime: string | undefined) {
   editTimes.set(pageId, editedTime);
 }
 
+export function getEditTime(pageId: string): string | undefined {
+  return editTimes.get(pageId);
+}
+
 export function computeUnread(items: SidebarItem[]): Set<string> {
   const unread = new Set<string>();
   for (const item of items) {

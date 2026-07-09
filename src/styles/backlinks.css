@@ -1,0 +1,55 @@
+.hive-backlinks {
+  margin: 4px 0 20px;
+  font-size: 0.8rem;
+}
+.hive-backlinks-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: none;
+  padding: 4px 0;
+  color: var(--hive-color-fg-muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+  border-radius: var(--hive-radius-sm);
+}
+.hive-backlinks-toggle:hover {
+  color: var(--hive-color-fg-secondary);
+}
+.hive-backlinks-toggle .chevron {
+  font-size: 0.7rem;
+  transition: transform 0.12s ease-in-out;
+  display: inline-block;
+}
+.hive-backlinks-toggle .chevron.open {
+  transform: rotate(90deg);
+}
+.hive-backlinks-list {
+  display: flex;
+  flex-direction: column;
+  margin-top: 2px;
+  padding-left: 18px;
+}
+.hive-backlinks-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: var(--hive-radius-sm);
+  color: var(--hive-color-fg-secondary);
+  cursor: pointer;
+}
+.hive-backlinks-row:hover {
+  background: var(--hive-color-bg-surface);
+}
+.hive-backlinks-row .icon {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.85rem;
+}
+.hive-backlinks-row .title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -6,11 +6,12 @@ import {
   MagnifyingGlass,
   Sidebar as SidebarIcon,
 } from "@phosphor-icons/react";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { PageMenu } from "./PageMenu";
 import { useAppStore } from "../store/appStore";
 import { pageTitle } from "../lib/pageMeta";
 import { Glyph } from "../lib/iconSets";
+import { pendingWriteCount, subscribePending } from "../lib/offlineWrites";
 
 /**
  * Header v2 (post-ADR-001): breadcrumb navigation instead of the Phase-1
@@ -47,6 +48,20 @@ function AuthChip() {
   return (
     <span className="hive-auth-chip" title={auth.message} style={{ background: s.bg, color: s.fg }}>
       {s.label}
+    </span>
+  );
+}
+
+/** Amber pill for unsynced offline edits — visible only while any are queued. */
+function UnsyncedChip() {
+  const count = useSyncExternalStore(subscribePending, pendingWriteCount, pendingWriteCount);
+  if (count === 0) return null;
+  return (
+    <span
+      className="hive-unsynced-chip"
+      title="Edits made offline — they'll sync automatically when you're back online."
+    >
+      ● {count} unsynced
     </span>
   );
 }
@@ -160,6 +175,7 @@ export function Header() {
           {menuOpen && <PageMenu onClose={() => setMenuOpen(false)} />}
         </span>
       )}
+      <UnsyncedChip />
       <AuthChip />
     </header>
   );

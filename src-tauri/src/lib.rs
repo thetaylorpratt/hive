@@ -1,3 +1,5 @@
+use tauri::menu::{MenuBuilder, MenuItemBuilder};
+use tauri::tray::TrayIconBuilder;
 use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_sql::{Migration, MigrationKind};
@@ -326,6 +328,95 @@ pub fn run() {
             if let Err(err) = result {
                 eprintln!("global-shortcut: failed to register ctrl+alt+n: {err}");
             }
+
+            // Menu bar (tray) presence: a bee in the menu bar mirrors the
+            // global-shortcut quick-capture flow (same show+focus+emit
+            // sequence) and offers Open/Capture/Check for Updates/Quit
+            // without requiring the app to be foregrounded. macOS Dock
+            // behavior is left unchanged — Hive is a full app that also
+            // has a tray, not a menu-bar-only accessory app.
+            let open_item = MenuItemBuilder::with_id("open", "Open Hive").build(app);
+            let capture_item = MenuItemBuilder::with_id("capture", "Quick Capture")
+                .accelerator("Ctrl+Alt+N")
+                .build(app);
+            let updates_item = MenuItemBuilder::with_id("updates", "Check for Updates…").build(app);
+            let quit_item = MenuItemBuilder::with_id("quit", "Quit Hive").build(app);
+
+            match (open_item, capture_item, updates_item, quit_item) {
+                (Ok(open_item), Ok(capture_item), Ok(updates_item), Ok(quit_item)) => {
+                    let menu_result = MenuBuilder::new(app)
+                        .item(&open_item)
+                        .item(&capture_item)
+                        .separator()
+                        .item(&updates_item)
+                        .separator()
+                        .item(&quit_item)
+                        .build();
+
+                    match menu_result {
+                        Ok(menu) => {
+                            let mut tray_builder = TrayIconBuilder::new()
+                                // Our icon is a colored logo, not a monochrome
+                                // template glyph — template mode would blank
+                                // it out in the menu bar.
+                                .icon_as_template(false)
+                                .menu(&menu)
+                                .show_menu_on_left_click(true)
+                                .on_menu_event(|app, event| {
+                                    match event.id().as_ref() {
+                                        "open" => {
+                                            if let Some(window) = app.get_webview_window("main") {
+                                                let _ = window.unminimize();
+                                                let _ = window.show();
+                                                let _ = window.set_focus();
+                                            }
+                                        }
+                                        "capture" => {
+                                            if let Some(window) = app.get_webview_window("main") {
+                                                let _ = window.unminimize();
+                                                let _ = window.show();
+                                                let _ = window.set_focus();
+                                            }
+                                            let _ = app.emit("hive://global-capture", ());
+                                        }
+                                        "updates" => {
+                                            if let Some(window) = app.get_webview_window("main") {
+                                                let _ = window.unminimize();
+                                                let _ = window.show();
+                                                let _ = window.set_focus();
+                                            }
+                                            let _ = app.emit("hive://check-updates", ());
+                                        }
+                                        "quit" => {
+                                            app.exit(0);
+                                        }
+                                        _ => {}
+                                    }
+                                });
+
+                            if let Some(icon) = app.default_window_icon().cloned() {
+                                tray_builder = tray_builder.icon(icon);
+                            } else {
+                                eprintln!("tray: no default window icon available");
+                            }
+
+                            match tray_builder.build(app) {
+                                Ok(tray) => {
+                                    // TrayIcon is reference-counted and removed
+                                    // from the menu bar when the last instance
+                                    // is dropped — keep it alive for the life
+                                    // of the app via managed state.
+                                    app.manage(tray);
+                                }
+                                Err(err) => eprintln!("tray: failed to build tray icon: {err}"),
+                            }
+                        }
+                        Err(err) => eprintln!("tray: failed to build menu: {err}"),
+                    }
+                }
+                _ => eprintln!("tray: failed to build one or more menu items"),
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
