@@ -193,6 +193,36 @@ function ItemContextMenu({
   );
 }
 
+/** A starred doc's compact chip. Right-click gets the same context menu as
+ * regular rows — without it, Unstar/Remove are unreachable once a doc leaves
+ * the Pinned/Today lists (starred items were stuck forever). */
+function FavChip({ item }: { item: SidebarItem }) {
+  const openPage = useAppStore((s) => s.openPage);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  return (
+    <>
+      <button
+        className="hive-fav"
+        title={`${item.titleCache} — right-click for options`}
+        onClick={() => void openPage(item.notionPageId)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setMenu({ x: e.clientX, y: e.clientY });
+        }}
+      >
+        {item.iconCache ? (
+          <Glyph icon={item.iconCache} size={15} />
+        ) : (
+          item.titleCache.slice(0, 1).toUpperCase()
+        )}
+      </button>
+      {menu && (
+        <ItemContextMenu item={item} point={menu} onClose={() => setMenu(null)} />
+      )}
+    </>
+  );
+}
+
 function ItemRow({ item }: { item: SidebarItem }) {
   const openPage = useAppStore((s) => s.openPage);
   const setItemTier = useAppStore((s) => s.setItemTier);
@@ -637,18 +667,7 @@ export function Sidebar() {
       {favorites.length > 0 && (
         <div className="hive-fav-row">
           {favorites.map((f) => (
-            <button
-              key={f.id}
-              className="hive-fav"
-              title={f.titleCache}
-              onClick={() => void openPage(f.notionPageId)}
-            >
-              {f.iconCache ? (
-                <Glyph icon={f.iconCache} size={15} />
-              ) : (
-                f.titleCache.slice(0, 1).toUpperCase()
-              )}
-            </button>
+            <FavChip key={f.id} item={f} />
           ))}
         </div>
       )}
