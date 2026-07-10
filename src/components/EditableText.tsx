@@ -498,16 +498,14 @@ export function EditableText({
     if (focusBlockId === block.id && ref.current) {
       const el = ref.current;
       el.focus();
-      // Empty blocks need a <br> caret anchor — WKWebView won't hold a
-      // collapsed range in a childless element (htmlToRichText ignores BR,
-      // so it never pollutes the committed rich text).
-      if (el.childNodes.length === 0) el.appendChild(document.createElement("br"));
-      const sel = window.getSelection();
-      const range = document.createRange();
-      range.selectNodeContents(el);
-      range.collapse(el.childNodes.length === 1 && el.firstChild?.nodeName === "BR");
-      sel?.removeAllRanges();
-      sel?.addRange(range);
+      if (el.childNodes.length > 0) {
+        const sel = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        range.collapse(false);
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+      }
       setFocusBlock(null);
     }
   }, [focusBlockId, block.id, setFocusBlock]);
@@ -944,18 +942,26 @@ export function EditableText({
             const saved =
               sel && sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
             el.focus({ preventScroll: true });
-            if (saved && el.contains(saved.commonAncestorContainer)) {
+            // WKWebView legitimately anchors click carets on the WRAPPER
+            // span (parent of the editable) — restore any range in el OR
+            // its wrap. Only when the click produced NO range anywhere
+            // near this block (empty blocks: WKWebView can't anchor a
+            // range in a childless element — "can't edit that line at
+            // all") do we seed a <br> anchor and place the caret ourselves.
+            const wrapEl = el.parentElement;
+            const anchorEl = saved?.commonAncestorContainer as Node | null;
+            if (
+              saved &&
+              anchorEl &&
+              (el.contains(anchorEl) || wrapEl?.contains(anchorEl))
+            ) {
               sel!.removeAllRanges();
               sel!.addRange(saved);
-            } else if (sel) {
-              // The click produced no caret (empty blocks: WKWebView can't
-              // anchor a range in a childless element — "can't edit that
-              // line at all"). Seed a <br> anchor and place the caret.
-              if (el.childNodes.length === 0)
-                el.appendChild(document.createElement("br"));
+            } else if (sel && el.childNodes.length === 0) {
+              el.appendChild(document.createElement("br"));
               const range = document.createRange();
-              range.selectNodeContents(el);
-              range.collapse(el.firstChild?.nodeName === "BR");
+              range.setStart(el, 0);
+              range.collapse(true);
               sel.removeAllRanges();
               sel.addRange(range);
             }
