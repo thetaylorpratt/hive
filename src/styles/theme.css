@@ -175,6 +175,37 @@ body {
   color: var(--hive-color-fg-secondary);
 }
 
+/* WKWebView fails to PAINT ::marker for list items dynamically inserted
+ * into the top-level ul > .hive-toprow > li structure — computed style says
+ * disc, geometry is perfect, no dot until a renavigation repaints (the
+ * final "disappearing bullets" layer; proven by ⌘⌥L DOM dumps). Paint the
+ * markers ourselves with ::before, which invalidates reliably. Nested
+ * lists (no TopRow) keep native markers. */
+.hive-doc ul > .hive-toprow > li,
+.hive-doc ol > .hive-toprow > li {
+  list-style: none;
+  position: relative;
+}
+.hive-doc ul > .hive-toprow > li::before {
+  content: "•";
+  position: absolute;
+  right: calc(100% + 0.45em);
+  color: var(--hive-color-fg-secondary);
+}
+.hive-doc ol {
+  counter-reset: hive-ol;
+}
+.hive-doc ol > .hive-toprow {
+  counter-increment: hive-ol;
+}
+.hive-doc ol > .hive-toprow > li::before {
+  content: counter(hive-ol) ".";
+  position: absolute;
+  right: calc(100% + 0.35em);
+  color: var(--hive-color-fg-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
 .hive-doc a {
   color: var(--hive-color-accent);
   text-decoration: none;
