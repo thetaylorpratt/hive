@@ -300,7 +300,7 @@ interface AppState {
   canEdit: () => boolean;
   editBlockText: (blockId: string, type: string, richText: RichTextItem[]) => Promise<void>;
   toggleTodo: (blockId: string, checked: boolean) => Promise<void>;
-  insertParagraphAfter: (afterId: string, type?: string) => Promise<void>;
+  insertParagraphAfter: (afterId: string | null, type?: string) => Promise<void>;
   convertBlock: (
     blockId: string,
     newType: string,

@@ -113,6 +113,13 @@ body {
   min-height: 20vh;
   cursor: text;
 }
+.hive-empty-page-hint {
+  display: inline-block;
+  padding-top: 4px;
+  color: var(--hive-color-fg-muted);
+  font-size: 0.95rem;
+  pointer-events: none;
+}
 
 .hive-doc h1,
 .hive-doc h2,

@@ -275,7 +275,7 @@ function findParentOf(blocks: HiveBlock[], blockId: string): HiveBlock | null {
 export async function insertParagraphAfter(
   pageId: string,
   blocks: HiveBlock[],
-  afterId: string,
+  afterId: string | null, // null = append at the end of the page (first block on empty pages)
   pageParentId: string, // the page id (used when afterId is top-level)
   sink: WriteSink,
   type = "paragraph", // Notion parity: Enter in a list continues the list
@@ -283,7 +283,7 @@ export async function insertParagraphAfter(
   if (isWriteOffline()) throw new Error(OFFLINE_BLOCKED_MESSAGE);
   // `after` must be a direct child of the append target: resolve the real
   // parent for nested siblings instead of always appending to the page.
-  const parentBlock = findParentOf(blocks, afterId);
+  const parentBlock = afterId ? findParentOf(blocks, afterId) : null;
   const parentId = parentBlock?.id ?? pageParentId;
   const localId = `local-${crypto.randomUUID()}`;
   const payload = emptyPayload(type);
@@ -293,15 +293,17 @@ export async function insertParagraphAfter(
     has_children: false,
     [type]: payload,
   };
-  const next = insertAfterInTree(blocks, afterId, newBlock);
+  const next = afterId
+    ? insertAfterInTree(blocks, afterId, newBlock)
+    : [...blocks, newBlock];
   await persist(pageId, next);
 
   const remoteId =
-    sink === "notion" && !afterId.startsWith("local-") && !parentId.startsWith("local-")
+    sink === "notion" && !afterId?.startsWith("local-") && !parentId.startsWith("local-")
       ? enqueue(() =>
           notion().blocks.children.append({
             block_id: parentId,
-            after: afterId,
+            ...(afterId ? { after: afterId } : {}),
             children: [{ [type]: payload } as never],
           }),
         ).then(

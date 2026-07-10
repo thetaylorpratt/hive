@@ -384,7 +384,11 @@ function Content() {
             onClick={() => {
               const blocks = page.blocks;
               const last = blocks[blocks.length - 1];
-              if (!last) return;
+              if (!last) {
+                // Brand-new page with zero blocks: create the first one.
+                void useAppStore.getState().insertParagraphAfter(null);
+                return;
+              }
               const payload = last[last.type] as
                 | { rich_text?: unknown[] }
                 | undefined;
@@ -394,7 +398,13 @@ function Content() {
                 void useAppStore.getState().insertParagraphAfter(last.id);
               }
             }}
-          />
+          >
+            {page.blocks.length === 0 && (
+              <span className="hive-empty-page-hint">
+                Click here to start writing…
+              </span>
+            )}
+          </div>
         )}
       </article>
     );
