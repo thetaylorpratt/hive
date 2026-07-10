@@ -64,6 +64,39 @@ async fn open_embed(app: tauri::AppHandle, url: String) -> Result<(), String> {
     tauri::WebviewWindowBuilder::new(&app, "embed", tauri::WebviewUrl::External(parsed))
         .title("Notion (embedded)")
         .inner_size(1100.0, 800.0)
+        // WKWebView never creates windows for window.open, so Notion's OAuth
+        // popups (Google/Apple/SSO) fail and Notion shows "popups blocked".
+        // Reroute popups into same-window navigation: the OAuth redirect
+        // endpoint sets the session cookie server-side, and our window.close
+        // override bounces the would-be popup page back into Notion.
+        .initialization_script(
+            r#"
+            (function () {
+              var FAKE = {
+                closed: false,
+                close: function () {},
+                focus: function () {},
+                blur: function () {},
+                postMessage: function () {},
+                location: { assign: function () {}, replace: function () {}, href: "" },
+              };
+              window.open = function (url) {
+                if (url) {
+                  try { sessionStorage.setItem("hive-embed-return", location.href); } catch (e) {}
+                  location.assign(url);
+                }
+                return FAKE;
+              };
+              // OAuth popup-redirect pages try to close themselves after
+              // posting back to their (missing) opener — go home instead.
+              window.close = function () {
+                var back = null;
+                try { back = sessionStorage.getItem("hive-embed-return"); } catch (e) {}
+                location.replace(back || "https://www.notion.so");
+              };
+            })();
+            "#,
+        )
         .build()
         .map_err(|e| e.to_string())?;
     Ok(())
