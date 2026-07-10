@@ -37,7 +37,28 @@ export function installDebugTaps(): void {
   dlog(`=== taps installed, app boot ===`);
 
   window.addEventListener("mousedown", (e) => dlog(`mousedown ${describe(e.target)}`), true);
-  window.addEventListener("focusin", (e) => dlog(`focusin  ${describe(e.target)}`), true);
+  window.addEventListener(
+    "focusin",
+    (e) => {
+      // For editable blocks, capture the LIST STRUCTURE at the caret —
+      // "bullet disappeared with no TYPE-CHANGE" means the model is right
+      // and the DOM/CSS is lying: log li presence, its ancestry, and the
+      // computed marker style at focus time.
+      let ctx = "";
+      const el = e.target as HTMLElement | null;
+      if (el?.classList?.contains("hive-editable")) {
+        const li = el.closest("li");
+        if (!li) {
+          ctx = " ctx=NO-LI";
+        } else {
+          const cs = getComputedStyle(li);
+          ctx = ` ctx=li<${li.parentElement?.tagName}<${li.parentElement?.parentElement?.tagName} disp=${cs.display} marker=${cs.listStyleType}`;
+        }
+      }
+      dlog(`focusin  ${describe(e.target)}${ctx}`);
+    },
+    true,
+  );
   window.addEventListener(
     "focusout",
     (e) => dlog(`focusout ${describe(e.target)} -> ${describe((e as FocusEvent).relatedTarget)}`),
