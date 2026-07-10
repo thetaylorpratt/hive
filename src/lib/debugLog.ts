@@ -98,7 +98,8 @@ export function installDebugTaps(): void {
   window.addEventListener(
     "keydown",
     (e) => {
-      if (e.metaKey && e.altKey && (e.key === "d" || e.code === "KeyD")) {
+      // ⌘⌥L (⌘⌥D is macOS's Show/Hide Dock — the OS eats it before us)
+      if (e.metaKey && e.altKey && (e.key === "l" || e.code === "KeyL")) {
         e.preventDefault();
         dumpDom();
       }
