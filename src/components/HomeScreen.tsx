@@ -39,6 +39,8 @@ const TIPS: { keys?: string; text: string }[] = [
   { keys: "/", text: "Slash on an empty line opens the block menu — tables, callouts, toggles, dividers." },
   { keys: ":bee:", text: "Type a colon + name for emoji autocomplete, exactly like Notion and Slack." },
   { text: "Select any text for the formatting toolbar — 💬 posts a comment to the page, quoting your selection." },
+  { text: "Threads with new replies get a badge and sort first in the comments panel — click one to jump to its exact text." },
+  { keys: "⌘K", text: "Copy a link to the current page." },
   { keys: "⌘⇧F", text: "Focus mode dims everything but the block you're writing in, with typewriter scrolling." },
   { text: "Drag docs from Today to Pinned to keep them; drop onto folders to file them. Today auto-archives in 24h." },
   { keys: "alias", text: "Type “alias mtg” in ⌘T to bind a word to the current doc — strict-prefix, always ranks first." },

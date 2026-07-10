@@ -1995,6 +1995,27 @@ tr:hover .hive-row-gutter {
   padding: 0 8px;
   font-size: 0.72rem;
 }
+.hive-comments .head .unread-chip {
+  background: var(--hive-color-accent-subtle);
+  color: var(--hive-color-accent);
+  border-radius: 999px;
+  padding: 0 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+.hive-comments .head .mark-all-read {
+  margin-left: auto;
+  border: none;
+  background: none;
+  color: var(--hive-color-fg-muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+}
+.hive-comments .head .mark-all-read:hover {
+  color: var(--hive-color-accent);
+}
 .hive-comments .threads {
   flex: 1;
   overflow-y: auto;
@@ -2013,6 +2034,28 @@ tr:hover .hive-row-gutter {
   border-radius: var(--hive-radius);
   padding: 9px 10px;
   background: var(--hive-color-bg-base);
+  cursor: pointer;
+}
+.hive-comment-thread.unread {
+  border-color: var(--hive-color-accent);
+}
+.hive-comment-thread .badge {
+  display: inline-block;
+  background: var(--hive-color-accent);
+  color: var(--hive-color-bg-base);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.hive-comment-thread .badge.dot {
+  background: var(--hive-color-accent-subtle);
+  color: var(--hive-color-accent);
+}
+.hive-comment-thread .comment.unseen {
+  border-left: 2px solid var(--hive-color-accent);
+  padding-left: 6px;
 }
 .hive-comment-thread .anchor {
   border-left: 2px solid var(--hive-color-warning-fg);
@@ -2182,10 +2225,43 @@ tr:hover .hive-row-gutter {
   opacity: 1;
   background: var(--hive-color-warning-bg);
 }
+.hive-comment-dot.unread {
+  opacity: 1;
+  border-color: var(--hive-color-accent);
+}
+.hive-comment-dot.unread::after {
+  content: "";
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--hive-color-accent);
+}
 .hive-comment-thread.flash {
   outline: 2px solid var(--hive-color-accent);
   outline-offset: 1px;
   transition: outline-color 300ms ease;
+}
+
+/* Click-to-anchor (comments panel → document): temporary flash on the
+ * block a thread is about, applied to its [data-bid] element. Fades via
+ * transition rather than snapping off when the class is removed. */
+.hive-comment-anchor-flash {
+  outline: 2px solid var(--hive-color-accent);
+  outline-offset: 2px;
+  background: var(--hive-color-accent-subtle);
+  border-radius: var(--hive-radius-sm);
+  transition: outline-color 400ms ease, background-color 400ms ease;
+}
+
+/* Best-effort text-level highlight for the anchored snippet, via the CSS
+ * Custom Highlight API (Range-based — never mutates the contentEditable
+ * DOM). Registered/cleared alongside .hive-comment-anchor-flash above. */
+::highlight(hive-comment-anchor) {
+  background-color: var(--hive-color-accent-subtle);
+  color: inherit;
 }
 
 .hive-comment-thread .reactions {

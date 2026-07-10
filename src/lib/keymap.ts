@@ -13,11 +13,9 @@ export interface KeyBinding {
   action: string;
 }
 
-// Cmd-K mirrors Cmd-T because browsers refuse to yield Cmd-T during
-// plain-browser dev; inside the Tauri webview both work.
 export const DEFAULT_BINDINGS: KeyBinding[] = [
   { combo: "meta+t", action: "command-bar" },
-  { combo: "meta+k", action: "command-bar" },
+  { combo: "meta+k", action: "copy-page-link" },
   { combo: "meta+\\", action: "toggle-sidebar" },
   { combo: "meta+shift+f", action: "focus-mode" },
   { combo: "?", action: "shortcut-sheet" },

@@ -1,4 +1,5 @@
-import { useContext, useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useReducer, useRef, useState } from "react";
+import { newReplyCount, subscribeSeen } from "../lib/commentSeen";
 import { dlog } from "../lib/debugLog";
 import { searchUsers, userMentionItem, workspaceUsers } from "../lib/users";
 import type { WorkspaceUser } from "../lib/users";
@@ -43,12 +44,19 @@ function CommentDot({ blockId }: { blockId: string }) {
       ).length ?? 0,
   );
   const focusThread = useAppStore((s) => s.focusThread);
+  // Re-render on seen-state mutations (mark-seen/mark-all/first-visit) so
+  // the accent dot updates live without needing commentThreads to change.
+  const [, bumpSeenTick] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => subscribeSeen(bumpSeenTick), []);
   if (count === 0) return null;
+  const hasUnread = (useAppStore.getState().commentThreads ?? []).some(
+    (t) => threadBlockId(t.id) === blockId && t.comments.length > 0 && newReplyCount(t) > 0,
+  );
   return (
     <button
-      className="hive-comment-dot"
+      className={`hive-comment-dot${hasUnread ? " unread" : ""}`}
       contentEditable={false}
-      title={`${count} comment thread${count > 1 ? "s" : ""} — click to view`}
+      title={`${count} comment thread${count > 1 ? "s" : ""}${hasUnread ? " — new replies" : ""} — click to view`}
       onMouseDown={(e) => e.preventDefault()}
       onClick={() => {
         const first = useAppStore

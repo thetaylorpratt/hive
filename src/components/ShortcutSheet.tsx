@@ -6,7 +6,8 @@ const GROUPS: { title: string; rows: [string, string][] }[] = [
   {
     title: "Navigate",
     rows: [
-      ["⌘T / ⌘K", "Command bar — search docs, Notion, actions"],
+      ["⌘T", "Command bar — search docs, Notion, actions"],
+      ["⌘K", "Copy link to the current page"],
       ["⌃Tab", "Cycle recent docs (hold ⌃, Tab to advance)"],
       ["⌃1–9", "Switch Space"],
       ["two-finger swipe", "Next / previous Space (on sidebar)"],

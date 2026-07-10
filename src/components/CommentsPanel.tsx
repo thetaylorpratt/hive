@@ -1,8 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useReducer, useState } from "react";
 import { ChatCircle, UserCircle } from "@phosphor-icons/react";
 import { useAppStore } from "../store/appStore";
 import { MentionInput } from "./MentionInput";
 import { DEMO_PAGE_ID } from "../lib/demoPage";
+import type { CommentThread } from "../lib/notionMcp";
+import {
+  markAllSeen,
+  markFirstVisitIfNeeded,
+  markThreadSeen,
+  newReplyCount,
+  subscribeSeen,
+  threadBlockId,
+} from "../lib/commentSeen";
 
 /**
  * Right-hand comments panel: every discussion on the page (inline threads
@@ -25,20 +34,128 @@ function timeAgo(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
 
-function Thread({ thread }: { thread: import("../lib/notionMcp").CommentThread }) {
+/** Most recent comment's timestamp (ms), or 0 if unparseable/absent — used
+ * only to order unread threads by newest activity. */
+function lastActivity(thread: CommentThread): number {
+  const last = thread.comments[thread.comments.length - 1];
+  if (!last) return 0;
+  const t = new Date(last.time).getTime();
+  return Number.isNaN(t) ? 0 : t;
+}
+
+/** Unread threads first (newest activity desc), then the rest in their
+ * existing order. Computed once per load — callers must NOT re-derive this
+ * on every render, or the list would jump around as things get marked seen. */
+function computeOrder(threads: CommentThread[]): CommentThread[] {
+  const unread: { thread: CommentThread; activity: number }[] = [];
+  const rest: CommentThread[] = [];
+  for (const t of threads) {
+    if (newReplyCount(t) > 0) unread.push({ thread: t, activity: lastActivity(t) });
+    else rest.push(t);
+  }
+  unread.sort((a, b) => b.activity - a.activity);
+  return [...unread.map((u) => u.thread), ...rest];
+}
+
+/** Strip "..." ellipsis markers from a text-context anchor snippet and
+ * return its longest literal fragment — the piece most likely to survive
+ * as a contiguous run of text inside the rendered block. */
+function longestAnchorFragment(anchor: string): string {
+  return anchor
+    .split("...")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .reduce((best, cur) => (cur.length > best.length ? cur : best), "");
+}
+
+/** Best-effort text-level highlight via the CSS Custom Highlight API. Never
+ * touches the contentEditable DOM — only Range + CSS.highlights, or nothing
+ * if the fragment can't be found in a single text node or the API is
+ * unavailable. Returns a cleanup function, or null if nothing was applied. */
+function tryHighlightAnchor(el: HTMLElement, anchor: string | null): (() => void) | null {
+  if (!anchor) return null;
+  if (typeof Highlight === "undefined" || typeof CSS === "undefined" || !CSS.highlights) {
+    return null;
+  }
+  const fragment = longestAnchorFragment(anchor);
+  if (!fragment) return null;
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  let range: Range | null = null;
+  let node: Node | null;
+  while ((node = walker.nextNode())) {
+    const text = node.textContent ?? "";
+    const idx = text.indexOf(fragment);
+    if (idx >= 0) {
+      range = new Range();
+      range.setStart(node, idx);
+      range.setEnd(node, idx + fragment.length);
+      break;
+    }
+  }
+  if (!range) return null;
+  const highlight = new Highlight(range);
+  CSS.highlights.set("hive-comment-anchor", highlight);
+  return () => CSS.highlights.delete("hive-comment-anchor");
+}
+
+const BLOCK_FLASH_CLASS = "hive-comment-anchor-flash";
+const BLOCK_FLASH_MS = 1600;
+
+/** Click-to-anchor (the reverse of the block's 💬 indicator scrolling the
+ * panel): find the block this thread is anchored to, scroll it into view,
+ * flash its row, and best-effort highlight the commented text. */
+function anchorToBlock(thread: CommentThread): void {
+  const blockId = threadBlockId(thread.id);
+  const el = blockId
+    ? document.querySelector<HTMLElement>(`[data-bid="${CSS.escape(blockId)}"]`)
+    : null;
+  if (!el) {
+    useAppStore.getState().showToast("That text is no longer on the page");
+    return;
+  }
+  el.scrollIntoView({ block: "center", behavior: "smooth" });
+  el.classList.add(BLOCK_FLASH_CLASS);
+  const clearHighlight = tryHighlightAnchor(el, thread.anchor);
+  setTimeout(() => {
+    el.classList.remove(BLOCK_FLASH_CLASS);
+    clearHighlight?.();
+  }, BLOCK_FLASH_MS);
+}
+
+function Thread({ thread }: { thread: CommentThread }) {
   const users = useAppStore((s) => s.commentUsers);
   const replyToThread = useAppStore((s) => s.replyToThread);
   const [replying, setReplying] = useState(false);
 
+  const newCount = newReplyCount(thread);
+  const isBrandNew = newCount > 0 && newCount === thread.comments.length;
+  const unseenFrom = newCount > 0 ? thread.comments.length - newCount : Infinity;
+
+  const handleThreadClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    if (target.closest(".reply-row, .reply-link, button, textarea, input")) return;
+    markThreadSeen(thread);
+    anchorToBlock(thread);
+  };
+
   return (
-    <div className="hive-comment-thread" data-thread-id={thread.id}>
+    <div
+      className={`hive-comment-thread${newCount > 0 ? " unread" : ""}`}
+      data-thread-id={thread.id}
+      onClick={handleThreadClick}
+    >
+      {newCount > 0 && (
+        <span className={`badge${isBrandNew ? " dot" : ""}`}>
+          {isBrandNew ? "new thread" : `${newCount} new`}
+        </span>
+      )}
       {thread.anchor && (
         <div className="anchor" title="Commented text on the page">
           {thread.anchor.replace("...", " … ")}
         </div>
       )}
-      {thread.comments.map((c) => (
-        <div key={c.id} className="comment">
+      {thread.comments.map((c, i) => (
+        <div key={c.id} className={`comment${i >= unseenFrom ? " unseen" : ""}`}>
           <span className="who">
             <UserCircle size={15} weight="fill" />
             {users[c.authorId] ?? "…"}
@@ -66,6 +183,7 @@ function Thread({ thread }: { thread: import("../lib/notionMcp").CommentThread }
             withButton
             onSubmit={(text, mentions) => {
               setReplying(false);
+              markThreadSeen(thread);
               void replyToThread(thread.id, text, mentions);
             }}
             onCancel={() => setReplying(false)}
@@ -97,6 +215,25 @@ export function CommentsPanel() {
     if (pageId && threads === null && !loading) void loadComments();
   }, [pageId, threads, loading, loadComments]);
 
+  // Force a re-render whenever seen-state mutates (mark-seen, mark-all,
+  // first-visit) so badges/dots update live. Deliberately NOT a dependency
+  // of the order below — reordering while the panel is open is jarring.
+  const [, bumpSeenTick] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => subscribeSeen(bumpSeenTick), []);
+
+  // Compute display order exactly once per load (new `threads` reference) —
+  // never re-derived from live seen-state, so clicking/replying can't
+  // reshuffle the list out from under the user mid-session.
+  const [orderedThreads, setOrderedThreads] = useState<CommentThread[]>([]);
+  useEffect(() => {
+    if (!threads || !pageId) {
+      setOrderedThreads([]);
+      return;
+    }
+    markFirstVisitIfNeeded(pageId, threads);
+    setOrderedThreads(computeOrder(threads));
+  }, [threads, pageId]);
+
   // A block's 💬 indicator was clicked — scroll its thread into view.
   const focusThreadId = useAppStore((s) => s.focusThreadId);
   useEffect(() => {
@@ -116,11 +253,25 @@ export function CommentsPanel() {
 
   const realPage = pageId && pageId !== DEMO_PAGE_ID;
 
+  // Recomputed on every render (cheap — a reduce over the thread list), so
+  // it reflects seen-state immediately after a mark-seen/mark-all tick
+  // without needing to be part of the (deliberately sticky) order above.
+  const totalUnread = threads?.reduce((sum, t) => sum + newReplyCount(t), 0) ?? 0;
+
   return (
     <aside className="hive-comments">
       <div className="head">
         <ChatCircle size={16} weight="bold" /> Comments
         {threads && threads.length > 0 && <span className="count">{threads.length}</span>}
+        {totalUnread > 0 && <span className="unread-chip">{totalUnread} new</span>}
+        {totalUnread > 0 && (
+          <button
+            className="mark-all-read"
+            onClick={() => threads && markAllSeen(threads)}
+          >
+            Mark all read
+          </button>
+        )}
       </div>
 
       {!realPage && <div className="empty">Open a Notion page to see its comments.</div>}
@@ -129,7 +280,7 @@ export function CommentsPanel() {
         <div className="empty">No comments on this page yet.</div>
       )}
       <div className="threads">
-        {threads?.map((t) => <Thread key={t.id} thread={t} />)}
+        {orderedThreads.map((t) => <Thread key={t.id} thread={t} />)}
       </div>
 
       {realPage && (
