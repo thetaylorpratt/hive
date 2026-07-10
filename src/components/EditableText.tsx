@@ -926,6 +926,44 @@ export function EditableText({
     } else if (e.key === "Backspace" && text.length === 0) {
       e.preventDefault();
       void deleteBlock(block.id, { focusPrevious: true, silent: true });
+    } else if (e.key === "Delete" && ref.current && caretAtEnd(ref.current)) {
+      // Forward-delete at the end of a line: merge the NEXT block up (the
+      // mirror of Backspace) — an empty next block just disappears. Only
+      // text-class blocks without children merge; anything else no-ops
+      // rather than eating a table.
+      const el = ref.current;
+      const all = [...document.querySelectorAll<HTMLElement>(".hive-editable")];
+      const nextEl = all[all.indexOf(el) + 1];
+      const nextId = nextEl?.dataset.bid;
+      if (!nextId) return; // last block on the page
+      const findIn = (bs: HiveBlock[]): HiveBlock | null => {
+        for (const b of bs) {
+          if (b.id === nextId) return b;
+          const nested = b.children ? findIn(b.children) : null;
+          if (nested) return nested;
+        }
+        return null;
+      };
+      const nextBlock = findIn(useAppStore.getState().page?.blocks ?? []);
+      if (!nextBlock || nextBlock.children?.length) return;
+      const nextItems =
+        ((nextBlock[nextBlock.type] as { rich_text?: RichTextItem[] })
+          ?.rich_text ?? []);
+      if (!(nextBlock.type in { paragraph: 1, heading_1: 1, heading_2: 1, heading_3: 1, bulleted_list_item: 1, numbered_list_item: 1, to_do: 1, quote: 1, toggle: 1 })) {
+        return; // non-text block below — let Delete no-op
+      }
+      e.preventDefault();
+      if (nextItems.length) {
+        // Append the next block's content into this one; the caret is at
+        // the junction already (end of current content) and inserting after
+        // it doesn't move it. Update the model through the same commit path
+        // as typing.
+        el.insertAdjacentHTML("beforeend", canonical(nextItems));
+        lastSynced.current = el.innerHTML;
+        dirty.current = true;
+        commit();
+      }
+      void deleteBlock(nextId, { silent: true });
     } else if (e.key === "Escape") {
       ref.current?.blur();
     }
