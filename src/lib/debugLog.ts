@@ -26,8 +26,38 @@ function describe(target: EventTarget | null): string {
   if (!el || !el.nodeName) return "null";
   const cls = typeof el.className === "string" ? el.className.split(" ")[0] : "";
   const wrap = el.closest?.("[data-bid]") as HTMLElement | null;
-  const bid = wrap?.dataset.bid?.slice(0, 8);
+  // Notion block ids share the page's LEADING characters — the tail is the
+  // unique part (logging the first 8 made every block look identical).
+  const bid = wrap?.dataset.bid?.slice(-8);
   return `${el.nodeName}${cls ? `.${cls}` : ""}${bid ? `#${bid}` : ""}`;
+}
+
+/* While an editable block is focused, sample its list structure twice a
+ * second and log the moment it changes — the disappearing-marker bug
+ * happens MID-TYPING, between focusin samples, invisible to event taps. */
+let structTimer: ReturnType<typeof setInterval> | null = null;
+let structLast = "";
+function structOf(el: HTMLElement): string {
+  const li = el.closest("li");
+  if (!li) return "NO-LI";
+  const cs = getComputedStyle(li);
+  return `li<${li.parentElement?.tagName} disp=${cs.display} marker=${cs.listStyleType}`;
+}
+function watchStructure(el: HTMLElement) {
+  if (structTimer) clearInterval(structTimer);
+  structLast = structOf(el);
+  structTimer = setInterval(() => {
+    if (document.activeElement !== el || !el.isConnected) {
+      if (structTimer) clearInterval(structTimer);
+      structTimer = null;
+      return;
+    }
+    const now = structOf(el);
+    if (now !== structLast) {
+      dlog(`STRUCT-CHANGE ${describe(el)} ${structLast} -> ${now}`);
+      structLast = now;
+    }
+  }, 500);
 }
 
 let selTimer: ReturnType<typeof setTimeout> | null = null;
@@ -47,13 +77,8 @@ export function installDebugTaps(): void {
       let ctx = "";
       const el = e.target as HTMLElement | null;
       if (el?.classList?.contains("hive-editable")) {
-        const li = el.closest("li");
-        if (!li) {
-          ctx = " ctx=NO-LI";
-        } else {
-          const cs = getComputedStyle(li);
-          ctx = ` ctx=li<${li.parentElement?.tagName}<${li.parentElement?.parentElement?.tagName} disp=${cs.display} marker=${cs.listStyleType}`;
-        }
+        ctx = ` ctx=${structOf(el)}`;
+        watchStructure(el);
       }
       dlog(`focusin  ${describe(e.target)}${ctx}`);
     },

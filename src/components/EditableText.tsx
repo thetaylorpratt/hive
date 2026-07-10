@@ -470,7 +470,7 @@ export function EditableText({
   const prevType = useRef(block.type);
   useEffect(() => {
     if (prevType.current !== block.type) {
-      dlog(`TYPE-CHANGE #${block.id.slice(0, 8)} ${prevType.current} -> ${block.type}`);
+      dlog(`TYPE-CHANGE #${block.id.slice(-8)} ${prevType.current} -> ${block.type}`);
       prevType.current = block.type;
     }
   });
@@ -493,7 +493,7 @@ export function EditableText({
     }
     const html = canonical(items);
     if (lastSynced.current !== html) {
-      dlog(`SYNC-REWRITE #${block.id.slice(0, 8)} active=${document.activeElement?.nodeName}`);
+      dlog(`SYNC-REWRITE #${block.id.slice(-8)} active=${document.activeElement?.nodeName}`);
       el.innerHTML = html;
       lastSynced.current = html;
     }
