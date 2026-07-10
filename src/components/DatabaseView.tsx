@@ -892,6 +892,29 @@ export function DatabaseView({ databaseId }: { databaseId: string }) {
   const [titleValue, setTitleValue] = useState("");
   const titleInputRef = useRef<HTMLInputElement>(null);
 
+  // Two-step inline confirm (WKWebView has no native confirm dialog); the
+  // armed state disarms itself after a few seconds.
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  useEffect(() => {
+    if (!confirmingDelete) return;
+    const t = setTimeout(() => setConfirmingDelete(false), 4000);
+    return () => clearTimeout(t);
+  }, [confirmingDelete]);
+
+  const handleDeleteDatabase = () => {
+    if (!confirmingDelete) {
+      setConfirmingDelete(true);
+      return;
+    }
+    setConfirmingDelete(false);
+    const s = useAppStore.getState();
+    // The child_database block id IS the database id; archiving the block
+    // moves the database to Notion's trash (restorable from Notion).
+    void s
+      .deleteBlock(databaseId, { silent: true })
+      .then(() => s.showToast("Database moved to Notion's trash"));
+  };
+
   function load() {
     setLoading(true);
     setError(null);
@@ -1263,6 +1286,21 @@ export function DatabaseView({ databaseId }: { databaseId: string }) {
           <button type="button" className="hive-btn hive-db-new-btn" onClick={handleNewRow}>
             <Plus size={13} weight="bold" />
             New
+          </button>
+        )}
+        {canEdit && (
+          <button
+            type="button"
+            className={`hive-btn hive-db-delete-btn${confirmingDelete ? " confirming" : ""}`}
+            title={
+              confirmingDelete
+                ? "Click again to move this database to Notion's trash"
+                : "Delete database"
+            }
+            onClick={handleDeleteDatabase}
+          >
+            <Trash size={13} weight="bold" />
+            {confirmingDelete && "Really delete?"}
           </button>
         )}
       </div>

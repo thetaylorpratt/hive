@@ -67,6 +67,27 @@
   padding: 6px 12px;
   font-size: 0.8rem;
 }
+/* Delete database: quiet icon until hovered; armed state turns critical
+ * and asks for the second click (no native confirm in WKWebView). */
+.hive-db-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 6px 8px;
+  font-size: 0.8rem;
+  color: var(--hive-color-fg-muted);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.hive-db:hover .hive-db-delete-btn,
+.hive-db-delete-btn.confirming {
+  opacity: 1;
+}
+.hive-db-delete-btn.confirming {
+  color: var(--hive-color-critical-fg);
+  background: var(--hive-color-critical-bg);
+}
 
 /* ---- table ---- */
 
