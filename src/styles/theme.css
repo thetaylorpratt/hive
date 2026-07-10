@@ -803,6 +803,16 @@ tr:hover .hive-row-gutter {
   position: absolute;
   left: -1.7em;
   top: 0.2em;
+}
+/* List rows: -1.7em lands EXACTLY on the ::marker (the ul's padding zone),
+ * so hovering a bullet replaced its disc with the ⋮⋮ glyph — read as
+ * "bullets disappear as I type" (the mouse rests on the line being typed).
+ * Park the handle clear of the marker. */
+ul > .hive-toprow > .hive-block-handle,
+ol > .hive-toprow > .hive-block-handle {
+  left: -3.1em;
+}
+.hive-block-handle {
   display: flex;
   align-items: center;
   justify-content: center;
