@@ -62,9 +62,49 @@ function watchStructure(el: HTMLElement) {
 
 let selTimer: ReturnType<typeof setTimeout> | null = null;
 
+/** ⌘⌥D: dump the DOM skeleton of the last few top-level blocks — tags,
+ * classes, data-bid, and marker geometry. Ground truth for paint-level
+ * mysteries (computed style says disc, no dot visible). */
+function dumpDom() {
+  const rows = [...document.querySelectorAll<HTMLElement>(".hive-toprow")].slice(-4);
+  dlog(`=== DOM DUMP (${rows.length} rows) ===`);
+  const skel = (el: Element, depth: number): void => {
+    if (depth > 5) return;
+    const h = el as HTMLElement;
+    const cls = typeof h.className === "string" ? h.className.replace(/\s+/g, ".") : "";
+    const bid = h.dataset?.bid ?? h.dataset?.blockId;
+    const r = h.getBoundingClientRect?.();
+    let marker = "";
+    if (el.tagName === "LI") {
+      const cs = getComputedStyle(el);
+      marker = ` marker=${cs.listStyleType}/${cs.listStylePosition} disp=${cs.display} ovf=${cs.overflow}`;
+    }
+    dlog(
+      `${"  ".repeat(depth)}<${el.tagName}${cls ? "." + cls : ""}${bid ? ` bid=..${bid.slice(-8)}` : ""}> x=${Math.round(r?.left ?? -1)} w=${Math.round(r?.width ?? -1)}${marker}`,
+    );
+    for (const c of el.children) skel(c, depth + 1);
+  };
+  for (const row of rows) {
+    const parent = row.parentElement;
+    dlog(`row parent: <${parent?.tagName}${parent && "className" in parent ? "." + String(parent.className).replace(/\s+/g, ".") : ""}> x=${Math.round(parent?.getBoundingClientRect().left ?? -1)}`);
+    skel(row, 0);
+  }
+  dlog(`=== END DUMP ===`);
+}
+
 export function installDebugTaps(): void {
   if (!("__TAURI_INTERNALS__" in window)) return;
   dlog(`=== taps installed, app boot ===`);
+  window.addEventListener(
+    "keydown",
+    (e) => {
+      if (e.metaKey && e.altKey && (e.key === "d" || e.code === "KeyD")) {
+        e.preventDefault();
+        dumpDom();
+      }
+    },
+    true,
+  );
 
   window.addEventListener("mousedown", (e) => dlog(`mousedown ${describe(e.target)}`), true);
   window.addEventListener(
