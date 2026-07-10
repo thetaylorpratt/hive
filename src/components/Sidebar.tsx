@@ -198,12 +198,13 @@ function ItemContextMenu({
  * the Pinned/Today lists (starred items were stuck forever). */
 function FavChip({ item }: { item: SidebarItem }) {
   const openPage = useAppStore((s) => s.openPage);
+  const unread = useAppStore((s) => s.unreadPageIds.has(item.notionPageId));
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   return (
     <>
       <button
-        className="hive-fav"
-        title={`${item.titleCache} — right-click for options`}
+        className={`hive-fav${unread ? " unread" : ""}`}
+        title={`${item.titleCache}${unread ? " — changed since you last opened it" : ""} — right-click for options`}
         onClick={() => void openPage(item.notionPageId)}
         onContextMenu={(e) => {
           e.preventDefault();
@@ -215,6 +216,7 @@ function FavChip({ item }: { item: SidebarItem }) {
         ) : (
           item.titleCache.slice(0, 1).toUpperCase()
         )}
+        {unread && <span className="hive-fav-unread-dot" />}
       </button>
       {menu && (
         <ItemContextMenu item={item} point={menu} onClose={() => setMenu(null)} />
