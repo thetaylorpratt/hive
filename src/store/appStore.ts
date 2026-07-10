@@ -328,7 +328,11 @@ interface AppState {
   canEdit: () => boolean;
   editBlockText: (blockId: string, type: string, richText: RichTextItem[]) => Promise<void>;
   toggleTodo: (blockId: string, checked: boolean) => Promise<void>;
-  insertParagraphAfter: (afterId: string | null, type?: string) => Promise<void>;
+  insertParagraphAfter: (
+    afterId: string | null,
+    type?: string,
+    richText?: RichTextItem[],
+  ) => Promise<void>;
   convertBlock: (
     blockId: string,
     newType: string,
@@ -358,6 +362,9 @@ interface AppState {
   indentBlock: (blockId: string) => Promise<void>;
   outdentBlock: (blockId: string) => Promise<void>;
   setFocusBlock: (blockId: string | null) => void;
+  /** Consume-once: the next focus request places the caret at the block START
+   * (split-block Enter) instead of the default end. */
+  focusCaretStart: boolean;
   toggleFocusMode: () => void;
   showToast: (
     message: string,
@@ -987,19 +994,21 @@ export const useAppStore = create<AppState>((set, get) => ({
     );
   },
 
-  insertParagraphAfter: async (afterId, type = "paragraph") => {
+  insertParagraphAfter: async (afterId, type = "paragraph", richText = []) => {
     if (afterId) afterId = await settleId(afterId);
     await chainWrite(async () => {
       const { pageId, page, auth } = get();
       if (!pageId || !page) return;
       const sink = writeback.sinkFor(pageId, auth.status === "ready");
       const result = await writeback.insertParagraphAfter(
-        pageId, page.blocks, afterId, pageId, sink, type,
+        pageId, page.blocks, afterId, pageId, sink, type, richText,
       );
       if (get().pageId !== pageId) return;
       set({
         page: { ...page, blocks: result.blocks },
         focusBlockId: result.newBlockId,
+        // Split-block: the caret belongs at the START of the carried text.
+        focusCaretStart: richText.length > 0,
         writeError: null,
       });
       trackRemap(result.newBlockId, result.remoteId);
@@ -1112,7 +1121,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
-  setFocusBlock: (blockId) => set({ focusBlockId: blockId }),
+  setFocusBlock: (blockId) =>
+    set(blockId === null ? { focusBlockId: null, focusCaretStart: false } : { focusBlockId: blockId }),
+  focusCaretStart: false,
 
   updatePageIcon: async (emoji) => {
     const { pageId, page, auth } = get();

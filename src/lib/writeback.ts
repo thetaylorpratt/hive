@@ -303,6 +303,7 @@ export async function insertParagraphAfter(
   pageParentId: string, // the page id (used when afterId is top-level)
   sink: WriteSink,
   type = "paragraph", // Notion parity: Enter in a list continues the list
+  richText: RichTextItem[] = [], // split-block: the tail text carried into the new block
 ): Promise<WriteResult & { newBlockId: string; remoteId: Promise<string | null> }> {
   if (isWriteOffline()) throw new Error(OFFLINE_BLOCKED_MESSAGE);
   // `after` must be a direct child of the append target: resolve the real
@@ -310,7 +311,9 @@ export async function insertParagraphAfter(
   const parentBlock = afterId ? findParentOf(blocks, afterId) : null;
   const parentId = parentBlock?.id ?? pageParentId;
   const localId = `local-${crypto.randomUUID()}`;
-  const payload = emptyPayload(type);
+  const payload = richText.length
+    ? { ...emptyPayload(type), rich_text: richText }
+    : emptyPayload(type);
   const newBlock: HiveBlock = {
     id: localId,
     type,
@@ -322,13 +325,16 @@ export async function insertParagraphAfter(
     : [...blocks, newBlock];
   await persist(pageId, next);
 
+  const remotePayload = richText.length
+    ? { ...emptyPayload(type), rich_text: toApiRichText(richText) }
+    : payload;
   const remoteId =
     sink === "notion" && !afterId?.startsWith("local-") && !parentId.startsWith("local-")
       ? enqueue(() =>
           notion().blocks.children.append({
             block_id: parentId,
             ...(afterId ? { after: afterId } : {}),
-            children: [{ [type]: payload } as never],
+            children: [{ [type]: remotePayload } as never],
           }),
         ).then(
           (resp) =>

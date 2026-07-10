@@ -502,7 +502,9 @@ export function EditableText({
         const sel = window.getSelection();
         const range = document.createRange();
         range.selectNodeContents(el);
-        range.collapse(false);
+        // Split-block Enter puts the caret at the START of the carried text
+        // (consume-once flag); everything else keeps caret-to-end.
+        range.collapse(useAppStore.getState().focusCaretStart);
         sel?.removeAllRanges();
         sel?.addRange(range);
       }
@@ -889,6 +891,29 @@ export function EditableText({
         void convertBlock(block.id, "paragraph");
         return;
       }
+      // Split at the caret, like Notion: text after the caret moves into the
+      // new block (mid-text Enter previously just added an empty line below,
+      // leaving the text unbroken). Caret at end → empty tail → plain insert.
+      let tail: RichTextItem[] = [];
+      const el = ref.current;
+      const sel = window.getSelection();
+      if (
+        el &&
+        sel?.rangeCount &&
+        el.contains(sel.getRangeAt(0).startContainer)
+      ) {
+        const caret = sel.getRangeAt(0);
+        const tailRange = document.createRange();
+        tailRange.selectNodeContents(el);
+        tailRange.setStart(caret.startContainer, caret.startOffset);
+        if (!tailRange.collapsed) {
+          const frag = tailRange.extractContents(); // removes the tail from this block's DOM
+          const holder = document.createElement("div");
+          holder.appendChild(frag);
+          tail = htmlToRichText(holder.innerHTML);
+          dirty.current = true; // the DOM just changed under us — commit must see it
+        }
+      }
       commit();
       // Enter in a list continues the list (Notion); empty-Enter exit is
       // handled above. Toggles don't continue — Enter there means "new line".
@@ -896,6 +921,7 @@ export function EditableText({
       void insertParagraphAfter(
         block.id,
         CONTINUES.has(block.type) ? block.type : "paragraph",
+        tail,
       );
     } else if (e.key === "Backspace" && text.length === 0) {
       e.preventDefault();
