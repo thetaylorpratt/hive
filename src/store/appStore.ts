@@ -38,6 +38,8 @@ let peekCloseTimer: ReturnType<typeof setTimeout>;
 let navSeq = 0;
 let initStarted = false;
 let lastStaleCheck = 0;
+// Per-page throttle for the own-edit "mark seen" observer (see init).
+const ownEditMarked = new Map<string, number>();
 function loadDisplayPrefs(pageId: string) {
   try {
     return {
@@ -513,6 +515,27 @@ export const useAppStore = create<AppState>((set, get) => ({
       void startAttentionEngine(() => {
         void get().recomputeUnread();
         void get().refreshCurrentIfStale();
+      });
+      // Your own edits must not ring the unread bell: every local write
+      // marks the page's watched entries as "seen now" (throttled per page)
+      // so the attention engine only alerts on OTHER people's changes.
+      writeback.setWriteObserver((wroteMsgPageId) => {
+        const now = Date.now();
+        if ((ownEditMarked.get(wroteMsgPageId) ?? 0) > now - 30_000) return;
+        ownEditMarked.set(wroteMsgPageId, now);
+        void (async () => {
+          try {
+            const watched = await org.listAllWatched();
+            const mine = watched.filter((w) => w.notionPageId === wroteMsgPageId);
+            const ts = new Date().toISOString();
+            for (const item of mine) {
+              await org.updateItem(item.id, { lastOpenedAt: ts });
+            }
+            if (mine.length) await get().recomputeUnread();
+          } catch {
+            /* best-effort */
+          }
+        })();
       });
       void import("../lib/indexer").then((m) => m.startIndexer());
     } catch (err) {
@@ -1252,6 +1275,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
     if (writeback.hasPendingTextWrites()) return; // don't clobber unsent edits
+    // Structural writes (convert/insert/move recreate ops) live in the
+    // rate-limited queue, NOT in pendingTextWrites — a swap while they're
+    // in flight fetches a server snapshot OLDER than local optimism and
+    // reverts it (the "bullet turns back into a paragraph" bug). Also skip
+    // while offline edits await replay, and for ~20s after ANY local write:
+    // the "newer" remote edit time is usually our own write echoing back.
+    const { queueIdle } = await import("../lib/queue");
+    if (!queueIdle()) return;
+    const { pendingWriteCount } = await import("../lib/offlineWrites");
+    if (pendingWriteCount() > 0) return;
+    if (Date.now() - writeback.lastLocalWriteAt(pageId) < 20_000) return;
     // Never swap the doc out from under an active editing session — the
     // full-page re-set redraws every block, and the remote "newer" edit is
     // usually just OUR last write echoing back.

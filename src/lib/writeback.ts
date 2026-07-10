@@ -91,7 +91,31 @@ function insertAfterInTree(
   );
 }
 
+/* Every local mutation flows through persist() — the single choke point for
+ * "the user just edited this page". The stale-refresh probe uses the
+ * timestamp to avoid swapping in a server snapshot that predates in-flight
+ * writes (queued ops made the probe see "newer" remote state that was
+ * actually OLDER than local optimism — bullets reverting to paragraphs),
+ * and the attention engine uses the observer so your own edits don't ring
+ * the unread bell. */
+const localWriteTimes = new Map<string, number>();
+let writeObserver: ((pageId: string) => void) | null = null;
+
+export function setWriteObserver(fn: (pageId: string) => void) {
+  writeObserver = fn;
+}
+
+export function lastLocalWriteAt(pageId: string): number {
+  return localWriteTimes.get(pageId) ?? 0;
+}
+
 async function persist(pageId: string, blocks: HiveBlock[]) {
+  localWriteTimes.set(pageId, Date.now());
+  try {
+    writeObserver?.(pageId);
+  } catch {
+    /* observers are best-effort */
+  }
   try {
     await updateCachedBlocks(pageId, blocks);
   } catch {

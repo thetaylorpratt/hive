@@ -498,14 +498,16 @@ export function EditableText({
     if (focusBlockId === block.id && ref.current) {
       const el = ref.current;
       el.focus();
-      if (el.childNodes.length > 0) {
-        const sel = window.getSelection();
-        const range = document.createRange();
-        range.selectNodeContents(el);
-        range.collapse(false);
-        sel?.removeAllRanges();
-        sel?.addRange(range);
-      }
+      // Empty blocks need a <br> caret anchor — WKWebView won't hold a
+      // collapsed range in a childless element (htmlToRichText ignores BR,
+      // so it never pollutes the committed rich text).
+      if (el.childNodes.length === 0) el.appendChild(document.createElement("br"));
+      const sel = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(el.childNodes.length === 1 && el.firstChild?.nodeName === "BR");
+      sel?.removeAllRanges();
+      sel?.addRange(range);
       setFocusBlock(null);
     }
   }, [focusBlockId, block.id, setFocusBlock]);
@@ -942,9 +944,20 @@ export function EditableText({
             const saved =
               sel && sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
             el.focus({ preventScroll: true });
-            if (saved) {
+            if (saved && el.contains(saved.commonAncestorContainer)) {
               sel!.removeAllRanges();
               sel!.addRange(saved);
+            } else if (sel) {
+              // The click produced no caret (empty blocks: WKWebView can't
+              // anchor a range in a childless element — "can't edit that
+              // line at all"). Seed a <br> anchor and place the caret.
+              if (el.childNodes.length === 0)
+                el.appendChild(document.createElement("br"));
+              const range = document.createRange();
+              range.selectNodeContents(el);
+              range.collapse(el.firstChild?.nodeName === "BR");
+              sel.removeAllRanges();
+              sel.addRange(range);
             }
           }
           updateToolbar();
