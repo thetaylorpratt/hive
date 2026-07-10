@@ -465,6 +465,15 @@ export function EditableText({
   // for some content — which rewrote those blocks on every render, killing
   // any caret inside. Track what WE last synced instead.
   const lastSynced = useRef<string | null>(null);
+  // Debug tap: block type transitions are exactly the evidence the
+  // "disappearing bullets" class of bug hides — log every flip.
+  const prevType = useRef(block.type);
+  useEffect(() => {
+    if (prevType.current !== block.type) {
+      dlog(`TYPE-CHANGE #${block.id.slice(0, 8)} ${prevType.current} -> ${block.type}`);
+      prevType.current = block.type;
+    }
+  });
   useEffect(() => {
     const el = ref.current;
     if (!el || document.activeElement === el || dirty.current) return;

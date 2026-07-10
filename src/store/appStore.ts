@@ -25,7 +25,7 @@ import * as mcp from "../lib/notionMcp";
 import type { CommentThread } from "../lib/notionMcp";
 import * as writeback from "../lib/writeback";
 import type { Folder, SidebarItem, Space, Tier } from "../lib/orgDb";
-import type { PageData, RichTextItem } from "../lib/types";
+import type { HiveBlock, PageData, RichTextItem } from "../lib/types";
 
 export type AuthStatus = "checking" | "ready" | "missing-token" | "error";
 export type PageStatus = "idle" | "loading" | "refreshing" | "error";
@@ -1040,34 +1040,66 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   convertBlock: async (blockId, newType, richText = []) => {
-    blockId = await settleId(blockId);
+    // LOCAL-FIRST: the marker must appear the instant "- " is typed.
+    // Awaiting settleId before ANY visual change (v0.8.7) left the block
+    // looking like a plain line for ~1s while the create's remap settled —
+    // and the late conversion then remounted the list under the user's
+    // typing ("bullets keep disappearing"). Convert the model immediately;
+    // the remote recreate chases once the real id is known, carrying
+    // whatever text has been typed by then.
+    const localPageId = get().pageId;
     await chainWrite(async () => {
-      const { pageId, page, auth } = get();
+      const { pageId, page } = get();
       if (!pageId || !page) return;
-      const sink = writeback.sinkFor(pageId, auth.status === "ready");
-      const result = await writeback.convertBlockType(
-        pageId, page.blocks, blockId, newType, richText, sink,
+      const local = await writeback.convertBlockType(
+        pageId, page.blocks, blockId, newType, richText, "local",
       );
       if (get().pageId !== pageId) return;
       set({
-        page: { ...page, blocks: result.blocks },
+        page: { ...page, blocks: local.blocks },
         focusBlockId: newType === "divider" ? null : blockId,
         writeError: null,
       });
-      trackRemap(blockId, result.remoteId);
+    });
+    const settledId = await settleId(blockId);
+    await chainWrite(async () => {
+      const { pageId, page, auth } = get();
+      if (!pageId || !page || pageId !== localPageId) return;
+      const sink = writeback.sinkFor(pageId, auth.status === "ready");
+      // Create never confirmed (offline/local sink) — stay local-only.
+      if (sink !== "notion" || settledId.startsWith("local-")) return;
+      const find = (bs: HiveBlock[]): HiveBlock | null => {
+        for (const b of bs) {
+          if (b.id === settledId) return b;
+          const n = b.children ? find(b.children) : null;
+          if (n) return n;
+        }
+        return null;
+      };
+      // Recreate remotely with the block's CURRENT text — the user may have
+      // kept typing while the id settled.
+      const blk = find(page.blocks);
+      const currentRich =
+        ((blk?.[newType] as { rich_text?: RichTextItem[] })?.rich_text) ?? richText;
+      const result = await writeback.convertBlockType(
+        pageId, page.blocks, settledId, newType, currentRich, sink,
+      );
+      if (get().pageId !== pageId) return;
+      set({ page: { ...page, blocks: result.blocks }, writeError: null });
+      trackRemap(settledId, result.remoteId);
       void result.remoteId
         .then((realId) => {
           if (!realId) return;
-          requestCommit(blockId);
+          requestCommit(settledId);
           return chainWrite(async () => {
             const current = get();
             if (current.pageId !== pageId || !current.page) return;
-            writeback.flushPendingLocalText(blockId, realId);
-            const wasFocused = isBlockFocused(blockId);
+            writeback.flushPendingLocalText(settledId, realId);
+            const wasFocused = isBlockFocused(settledId);
             set({
               page: {
                 ...current.page,
-                blocks: writeback.remapBlockId(current.page.blocks, blockId, realId),
+                blocks: writeback.remapBlockId(current.page.blocks, settledId, realId),
               },
               ...(wasFocused ? { focusBlockId: realId } : {}),
             });
