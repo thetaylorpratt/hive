@@ -40,6 +40,32 @@ let initStarted = false;
 let lastStaleCheck = 0;
 // Per-page throttle for the own-edit "mark seen" observer (see init).
 const ownEditMarked = new Map<string, number>();
+
+/* Blocks live under a temporary local-* id until Notion confirms the create
+ * (~1s); recreate ops (convert/move) likewise swap a block's id when they
+ * settle. Structural ops issued during that window — a fast typist's "- "
+ * right after Enter is the classic case — used to skip their remote write
+ * silently: the local model showed a bullet while the server kept a
+ * paragraph, so every later save on the block failed and any refetch
+ * reverted it ("bullets disappear as I type"). Ops now await the pending
+ * remap and target the real id. */
+const pendingRemaps = new Map<string, Promise<string | null>>();
+function trackRemap(fromId: string, real: Promise<string | null>) {
+  pendingRemaps.set(fromId, real);
+  void real.catch(() => null).then(() => pendingRemaps.delete(fromId));
+}
+async function settleId(blockId: string): Promise<string> {
+  let id = blockId;
+  // Chase chains (insert -> convert -> move can each remap) with a bound.
+  for (let hops = 0; hops < 4; hops++) {
+    const pending = pendingRemaps.get(id);
+    if (!pending) return id;
+    const real = await pending.catch(() => null);
+    if (!real || real === id) return id;
+    id = real;
+  }
+  return id;
+}
 function loadDisplayPrefs(pageId: string) {
   try {
     return {
@@ -955,12 +981,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   toggleTodo: async (blockId, checked) => {
+    blockId = await settleId(blockId);
     await applyWrite(get, set, (pageId, blocks, sink) =>
       writeback.toggleTodo(pageId, blocks, blockId, checked, sink),
     );
   },
 
   insertParagraphAfter: async (afterId, type = "paragraph") => {
+    if (afterId) afterId = await settleId(afterId);
     await chainWrite(async () => {
       const { pageId, page, auth } = get();
       if (!pageId || !page) return;
@@ -974,6 +1002,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         focusBlockId: result.newBlockId,
         writeError: null,
       });
+      trackRemap(result.newBlockId, result.remoteId);
       void result.remoteId
         .then((realId) => {
           if (!realId) return;
@@ -1002,6 +1031,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   convertBlock: async (blockId, newType, richText = []) => {
+    blockId = await settleId(blockId);
     await chainWrite(async () => {
       const { pageId, page, auth } = get();
       if (!pageId || !page) return;
@@ -1015,6 +1045,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         focusBlockId: newType === "divider" ? null : blockId,
         writeError: null,
       });
+      trackRemap(blockId, result.remoteId);
       void result.remoteId
         .then((realId) => {
           if (!realId) return;
@@ -1040,6 +1071,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   deleteBlock: async (blockId, opts = {}) => {
+    blockId = await settleId(blockId);
     await chainWrite(async () => {
     const { pageId, page, auth } = get();
     if (!pageId || !page) return;
@@ -1189,6 +1221,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   duplicateBlock: async (blockId) => {
+    blockId = await settleId(blockId);
     await applyWrite(get, set, (pageId, blocks, sink) =>
       writeback.duplicateBlock(pageId, blocks, blockId, sink),
     );
@@ -1200,6 +1233,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     );
   },
   moveBlock: async (blockId, direction) => {
+    blockId = await settleId(blockId);
     await applyWrite(get, set, (pageId, blocks, sink) =>
       writeback.moveBlock(pageId, blocks, blockId, direction, sink),
     );
@@ -1209,6 +1243,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   // writeback.moveBlockTo), and the offline throw needs to surface as a
   // banner even though the drop handler that calls this doesn't await it.
   dragMoveBlock: async (blockId, afterId) => {
+    blockId = await settleId(blockId);
+    if (afterId) afterId = await settleId(afterId);
     try {
       await chainWrite(async () => {
         const { pageId, page, auth } = get();
@@ -1232,11 +1268,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
   indentBlock: async (blockId) => {
+    blockId = await settleId(blockId);
     await applyWrite(get, set, (pageId, blocks, sink) =>
       writeback.indentBlock(pageId, blocks, blockId, sink),
     );
   },
   outdentBlock: async (blockId) => {
+    blockId = await settleId(blockId);
     await applyWrite(get, set, (pageId, blocks, sink) =>
       writeback.outdentBlock(pageId, blocks, blockId, sink),
     );
