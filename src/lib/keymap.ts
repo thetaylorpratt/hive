@@ -22,6 +22,10 @@ export const DEFAULT_BINDINGS: KeyBinding[] = [
   { combo: "meta+alt+n", action: "quick-capture" },
   { combo: "meta+[", action: "nav-back" },
   { combo: "meta+]", action: "nav-forward" },
+  // The native menu binds ⌘= / ⌘- / ⌘0; these cover the shifted variants
+  // (⌘⇧= is the literal "+" most people mean by "⌘+").
+  { combo: "meta++", action: "text-bigger" },
+  { combo: "meta+_", action: "text-smaller" },
   ...Array.from({ length: 9 }, (_, i) => ({
     combo: `ctrl+${i + 1}`,
     action: `switch-space-${i + 1}`,

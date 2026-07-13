@@ -92,7 +92,19 @@ function loadTextScale(): number {
  * (theme.css). Applied at module load (covers the preview / pre-init render)
  * and again from init() once the app boots for real. */
 function applyTextScale(scale: number) {
-  document.documentElement.style.setProperty("--hive-doc-scale", String(scale));
+  // Native webview page zoom scales the ENTIRE app uniformly (sidebar,
+  // panels, databases, editor) — like browser ⌘+ — and can't be disturbed
+  // by re-renders (the doc-only CSS var approach read as inconsistent).
+  if ("__TAURI_INTERNALS__" in window) {
+    void import("@tauri-apps/api/webview")
+      .then((m) => m.getCurrentWebview().setZoom(scale))
+      .catch(() => {
+        document.documentElement.style.setProperty("--hive-doc-scale", String(scale));
+      });
+  } else {
+    // Plain-browser preview: approximate with the doc CSS var.
+    document.documentElement.style.setProperty("--hive-doc-scale", String(scale));
+  }
 }
 applyTextScale(loadTextScale());
 

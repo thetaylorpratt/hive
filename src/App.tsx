@@ -605,6 +605,8 @@ export default function App() {
       else if (action === "shortcut-sheet")
         s.setShortcutSheetOpen(!s.shortcutSheetOpen);
       else if (action === "quick-capture") s.setCaptureOpen(!s.captureOpen);
+      else if (action === "text-bigger") s.adjustTextScale(1);
+      else if (action === "text-smaller") s.adjustTextScale(-1);
       else if (action === "copy-page-link") {
         if (s.pageId && !s.pageId.startsWith("00000000-0000")) {
           const url = `https://www.notion.so/${s.pageId.replace(/-/g, "")}`;
