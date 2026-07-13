@@ -277,7 +277,11 @@ export function CommentsPanel() {
       {!realPage && <div className="empty">Open a Notion page to see its comments.</div>}
       {realPage && loading && !threads?.length && <div className="empty">Loading…</div>}
       {realPage && !loading && threads?.length === 0 && (
-        <div className="empty">No comments on this page yet.</div>
+        <div className="empty">
+          {mcpStatus === "connected"
+            ? "No comments on this page yet."
+            : "No page-level comments — and without your personal Notion connection, inline discussions on this page are invisible. Connect below to see everything."}
+        </div>
       )}
       <div className="threads">
         {orderedThreads.map((t) => <Thread key={t.id} thread={t} />)}

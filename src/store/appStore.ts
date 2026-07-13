@@ -1724,10 +1724,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     set({ commentsLoading: true });
     try {
-      let threads: CommentThread[];
+      let threads: CommentThread[] | undefined;
       if (mcpStatus === "connected") {
-        threads = await mcp.getCommentsAsUser(pageId);
-      } else {
+        try {
+          threads = await mcp.getCommentsAsUser(pageId);
+        } catch {
+          // Personal connection failed — reflect it so the panel shows the
+          // reconnect affordance instead of silently pretending, then fall
+          // through to the page-level REST fallback below.
+          set({ mcpStatus: "disconnected" });
+        }
+      }
+      if (threads === undefined) {
         // REST fallback: page-level comments only, grouped by discussion.
         const resp = (await enqueue(() =>
           notion().comments.list({ block_id: pageId, page_size: 100 }),

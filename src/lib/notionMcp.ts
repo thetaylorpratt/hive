@@ -190,9 +190,19 @@ async function ensureFreshToken(): Promise<McpAuth> {
       const merged = { ...next, refresh_token: next.refresh_token ?? current.refresh_token };
       await saveAuth(merged);
       return merged;
-    } catch {
-      await saveAuth(null);
-      throw new Error("Notion session expired — reconnect from the comments panel");
+    } catch (err) {
+      // Destroy tokens ONLY when Notion definitively rejected them. A
+      // transient failure (network down — e.g. testing offline mode — or a
+      // 5xx from the token endpoint) must NOT nuke the connection: that
+      // silently downgraded comments to the bot/page-level-only fallback
+      // until the user noticed inline discussions were missing.
+      const msg = err instanceof Error ? err.message : String(err);
+      const definitivelyRejected = /\((400|401|403)\)/.test(msg);
+      if (definitivelyRejected) {
+        await saveAuth(null);
+        throw new Error("Notion session expired — reconnect from the comments panel");
+      }
+      throw new Error("Notion connection hiccup (kept your session) — retry in a moment");
     }
   }
   return current;
