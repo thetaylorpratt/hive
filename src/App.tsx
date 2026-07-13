@@ -14,6 +14,7 @@ import { MovePageModal } from "./components/MovePageModal";
 import { InboxPanel } from "./components/InboxPanel";
 import { DigestPanel } from "./components/DigestPanel";
 import { BacklinksSection } from "./components/BacklinksSection";
+import { SettingsModal } from "./components/SettingsModal";
 import { CaptureModal } from "./components/CaptureModal";
 import { HomeScreen } from "./components/HomeScreen";
 import { EmojiPicker } from "./components/EmojiPicker";
@@ -577,6 +578,18 @@ export default function App() {
     return () => uninstall?.();
   }, []);
 
+  // Native app-menu items (Settings…, text size, View toggles) arrive as
+  // "hive://menu" events.
+  useEffect(() => {
+    let uninstall: (() => void) | undefined;
+    void import("./lib/menuEvents")
+      .then(async (m) => {
+        uninstall = await m.installMenuListeners();
+      })
+      .catch(() => undefined);
+    return () => uninstall?.();
+  }, []);
+
   useEffect(() => {
     return installKeymap((action) => {
       const s = useAppStore.getState();
@@ -621,6 +634,7 @@ export default function App() {
       <ShortcutSheet />
       <InboxPanel />
       <DigestPanel />
+      <SettingsModal />
       <CaptureModal />
       <PeekLayer />
     </div>

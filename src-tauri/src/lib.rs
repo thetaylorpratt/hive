@@ -1,7 +1,8 @@
-use tauri::menu::{MenuBuilder, MenuItemBuilder};
+use tauri::menu::{AboutMetadataBuilder, Menu, MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::tray::TrayIconBuilder;
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Manager, Runtime};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 /// Hive config, read from ~/.hive/config.json (git-ignored, never in the repo).
@@ -182,6 +183,47 @@ fn save_notion_token(token: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Shallow-merge an arbitrary patch into ~/.hive/config.json — the general
+/// escape hatch for settings UI that don't warrant their own single-purpose
+/// command (see `save_notion_token` for the token-specific one). A `null`
+/// value in the patch REMOVES that key; anything else overwrites it. Unknown
+/// existing keys (e.g. `notionToken`) are preserved untouched. Never log
+/// `patch` or the merged config — this file holds the Notion token.
+#[tauri::command]
+fn save_config_patch(patch: serde_json::Value) -> Result<(), String> {
+    let home = std::env::var_os("HOME").ok_or("no HOME")?;
+    let dir = std::path::Path::new(&home).join(".hive");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let path = dir.join("config.json");
+
+    let mut current: serde_json::Value = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+
+    let patch_obj = patch.as_object().ok_or("patch must be a JSON object")?;
+    let current_obj = current
+        .as_object_mut()
+        .ok_or("existing config.json is not a JSON object")?;
+
+    for (key, value) in patch_obj {
+        if value.is_null() {
+            current_obj.remove(key);
+        } else {
+            current_obj.insert(key.clone(), value.clone());
+        }
+    }
+
+    std::fs::write(&path, serde_json::to_string_pretty(&current).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+    }
+    Ok(())
+}
+
 /// OAuth tokens for Notion's hosted MCP (personal identity). Stored beside
 /// the API token in ~/.hive — chmod 600, never in the repo or logs.
 fn mcp_auth_path() -> Option<std::path::PathBuf> {
@@ -219,6 +261,104 @@ fn set_badge(app: tauri::AppHandle, count: i64) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.set_badge_count(if count > 0 { Some(count) } else { None });
     }
+}
+
+/// Builds the real macOS application menu bar (Hive/File/Edit/View/Window/
+/// Help) — set as THE app menu via `app.set_menu`, distinct from the tray's
+/// right-click menu built further down in `setup`. Predefined items (About,
+/// Services, Hide, Undo/Redo/Cut/Copy/Paste/SelectAll, Fullscreen, Minimize,
+/// Zoom, Quit) route to native macOS/WKWebView behavior — that's what makes
+/// clipboard and undo work correctly inside the webview.
+///
+/// Accelerator rule: only the brand-new shortcuts this menu introduces
+/// (Cmd+, / Cmd+= / Cmd+- / Cmd+0) get an `accelerator(...)`. Everything
+/// whose shortcut already lives in the in-app keymap (⌘T ⌘\ ⌘⇧F ⌘⌥N) is left
+/// unbound here — a menu accelerator intercepts the key before the webview
+/// ever sees it, which would double-handle or break focus-dependent
+/// in-app behavior.
+fn build_app_menu<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<Menu<R>> {
+    let about_metadata = AboutMetadataBuilder::new()
+        .name(Some("Hive"))
+        .version(Some(app.package_info().version.to_string()))
+        .build();
+
+    let hive_menu = SubmenuBuilder::new(app, "Hive")
+        .about(Some(about_metadata))
+        .separator()
+        .item(&MenuItemBuilder::with_id("check-updates", "Check for Updates…").build(app)?)
+        .separator()
+        .item(
+            &MenuItemBuilder::with_id("settings", "Settings…")
+                .accelerator("Cmd+,")
+                .build(app)?,
+        )
+        .separator()
+        .services()
+        .separator()
+        .hide()
+        .hide_others()
+        .show_all()
+        .separator()
+        .quit()
+        .build()?;
+
+    let file_menu = SubmenuBuilder::new(app, "File")
+        .item(&MenuItemBuilder::with_id("new-page", "New Page").build(app)?)
+        .item(&MenuItemBuilder::with_id("capture", "Quick Capture").build(app)?)
+        .separator()
+        .close_window()
+        .build()?;
+
+    // All-predefined: this is what gives us native clipboard/undo behavior
+    // in WKWebView (the OS routes these to the first responder chain).
+    let edit_menu = SubmenuBuilder::new(app, "Edit")
+        .undo()
+        .redo()
+        .separator()
+        .cut()
+        .copy()
+        .paste()
+        .select_all()
+        .build()?;
+
+    let view_menu = SubmenuBuilder::new(app, "View")
+        .item(
+            &MenuItemBuilder::with_id("text-bigger", "Increase Text Size")
+                .accelerator("Cmd+=")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("text-smaller", "Decrease Text Size")
+                .accelerator("Cmd+-")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("text-reset", "Reset Text Size")
+                .accelerator("Cmd+0")
+                .build(app)?,
+        )
+        .separator()
+        .item(&MenuItemBuilder::with_id("toggle-sidebar", "Toggle Sidebar").build(app)?)
+        .item(&MenuItemBuilder::with_id("focus-mode", "Focus Mode").build(app)?)
+        .separator()
+        .fullscreen()
+        .build()?;
+
+    let window_menu = SubmenuBuilder::new(app, "Window").minimize().maximize().build()?;
+
+    let help_menu = SubmenuBuilder::new(app, "Help")
+        .item(&MenuItemBuilder::with_id("shortcut-sheet", "Keyboard Shortcuts").build(app)?)
+        .item(&MenuItemBuilder::with_id("github", "Hive on GitHub").build(app)?)
+        .build()?;
+
+    MenuBuilder::new(app)
+        .item(&hive_menu)
+        .item(&file_menu)
+        .item(&edit_menu)
+        .item(&view_menu)
+        .item(&window_menu)
+        .item(&help_menu)
+        .build()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -362,6 +502,39 @@ pub fn run() {
                 eprintln!("global-shortcut: failed to register ctrl+alt+n: {err}");
             }
 
+            // The real macOS app menu (Hive/File/Edit/View/Window/Help) —
+            // separate from the tray menu built below. Custom item clicks
+            // (anything not natively handled, i.e. not About/Services/Hide/
+            // Undo/Cut/Copy/.../Quit) surface the main window and emit one
+            // event, "hive://menu", with the item id as payload; the
+            // frontend (src/lib/menuEvents.ts) dispatches on that id.
+            match build_app_menu(&app.handle().clone()) {
+                Ok(menu) => {
+                    if let Err(err) = app.set_menu(menu) {
+                        eprintln!("app-menu: failed to set app menu: {err}");
+                    }
+                    app.on_menu_event(|app, event| {
+                        let id = event.id().as_ref();
+                        if id == "github" {
+                            if let Err(err) = app
+                                .opener()
+                                .open_url("https://github.com/thetaylorpratt/hive", None::<&str>)
+                            {
+                                eprintln!("app-menu: failed to open github url: {err}");
+                            }
+                            return;
+                        }
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.unminimize();
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                        let _ = app.emit("hive://menu", id);
+                    });
+                }
+                Err(err) => eprintln!("app-menu: failed to build app menu: {err}"),
+            }
+
             // Menu bar (tray) presence: a bee in the menu bar mirrors the
             // global-shortcut quick-capture flow (same show+focus+emit
             // sequence) and offers Open/Capture/Check for Updates/Quit
@@ -461,7 +634,8 @@ pub fn run() {
             save_mcp_auth,
             load_mcp_auth,
             save_notion_token,
-            append_debug_log
+            append_debug_log,
+            save_config_patch
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

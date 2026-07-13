@@ -8,6 +8,8 @@ const GROUPS: { title: string; rows: [string, string][] }[] = [
     rows: [
       ["⌘T", "Command bar — search docs, Notion, actions"],
       ["⌘K", "Copy link to the current page"],
+      ["⌘,", "Settings"],
+      ["⌘+ / ⌘− / ⌘0", "Text size bigger / smaller / reset"],
       ["⌃Tab", "Cycle recent docs (hold ⌃, Tab to advance)"],
       ["⌃1–9", "Switch Space"],
       ["two-finger swipe", "Next / previous Space (on sidebar)"],

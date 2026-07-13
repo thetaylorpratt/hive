@@ -78,6 +78,24 @@ function loadDisplayPrefs(pageId: string) {
   }
 }
 
+const TEXT_SCALE_KEY = "hive-text-scale";
+// Fixed step ladder — adjustTextScale walks it one step at a time; direction
+// 0 resets straight to 1 (100%, the default).
+const TEXT_SCALE_STEPS = [0.85, 0.9, 0.95, 1, 1.05, 1.1, 1.2, 1.3, 1.45];
+
+function loadTextScale(): number {
+  const raw = Number(localStorage.getItem(TEXT_SCALE_KEY));
+  return TEXT_SCALE_STEPS.includes(raw) ? raw : 1;
+}
+
+/** Push the scale onto <html> as a CSS var — .hive-doc's font-size reads it
+ * (theme.css). Applied at module load (covers the preview / pre-init render)
+ * and again from init() once the app boots for real. */
+function applyTextScale(scale: number) {
+  document.documentElement.style.setProperty("--hive-doc-scale", String(scale));
+}
+applyTextScale(loadTextScale());
+
 let history: string[] = [];
 let historyIndex = -1;
 let suppressHistory = false;
@@ -288,6 +306,14 @@ interface AppState {
     loading: boolean;
   } | null;
 
+  // reader text-size control — a --hive-doc-scale CSS var consumed by .hive-doc
+  textScale: number;
+  adjustTextScale: (direction: 1 | -1 | 0) => void;
+
+  // Settings modal (the traditional preferences surface)
+  settingsOpen: boolean;
+  setSettingsOpen: (open: boolean) => void;
+
   init: () => Promise<void>;
   openPage: (input: string) => Promise<void>;
   openDemo: () => Promise<void>;
@@ -474,9 +500,36 @@ export const useAppStore = create<AppState>((set, get) => ({
   focusThreadId: null,
   searchView: null,
 
+  textScale: loadTextScale(),
+  adjustTextScale: (direction) => {
+    const current = get().textScale;
+    let next: number;
+    if (direction === 0) {
+      next = 1;
+    } else {
+      const idx = TEXT_SCALE_STEPS.indexOf(current);
+      const curIdx = idx === -1 ? TEXT_SCALE_STEPS.indexOf(1) : idx;
+      const nextIdx = Math.min(
+        TEXT_SCALE_STEPS.length - 1,
+        Math.max(0, curIdx + direction),
+      );
+      next = TEXT_SCALE_STEPS[nextIdx];
+    }
+    localStorage.setItem(TEXT_SCALE_KEY, String(next));
+    applyTextScale(next);
+    set({ textScale: next });
+    get().showToast(`Text size ${Math.round(next * 100)}%`);
+  },
+
+  settingsOpen: false,
+  setSettingsOpen: (open) => set({ settingsOpen: open }),
+
   init: async () => {
     if (initStarted) return; // StrictMode double-invoke / re-mount guard
     initStarted = true;
+    // Reader text-size preference — reapply on real boot too (module load
+    // already covers the pre-init/preview render).
+    applyTextScale(get().textScale);
     // Organization plane boots regardless of Notion auth.
     const spaces = await org.ensureDefaultSpace();
     const savedId = localStorage.getItem(ACTIVE_SPACE_KEY);

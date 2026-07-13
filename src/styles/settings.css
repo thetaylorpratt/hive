@@ -1,0 +1,150 @@
+/* ---- Settings modal ---- */
+/* Uses the shared .hive-modal-backdrop scrim (theme.css) — only the panel
+ * itself and its contents are defined here. */
+
+.hive-settings-modal {
+  width: min(480px, 92vw);
+  max-height: 80vh;
+  overflow-y: auto;
+  background: var(--hive-color-bg-surface);
+  border: 1px solid var(--hive-color-border);
+  border-radius: var(--hive-radius-lg);
+  box-shadow: var(--hive-shadow-sm);
+  animation: hive-menu-in 150ms ease-out;
+}
+
+.hive-settings-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--hive-color-border-subtle);
+  position: sticky;
+  top: 0;
+  background: var(--hive-color-bg-surface);
+}
+.hive-settings-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+.hive-settings-close {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--hive-color-fg-muted);
+  padding: 2px 6px;
+  border-radius: var(--hive-radius-sm);
+}
+.hive-settings-close:hover {
+  color: var(--hive-color-fg);
+  background: var(--hive-color-bg-subtle);
+}
+
+.hive-settings-body {
+  padding: 4px 16px 16px;
+}
+
+.hive-settings-section {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--hive-color-border-subtle);
+}
+.hive-settings-section:last-child {
+  border-bottom: none;
+  padding-bottom: 2px;
+}
+
+.hive-settings-heading {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--hive-color-fg-muted);
+  margin-bottom: 10px;
+}
+
+.hive-settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+}
+.hive-settings-row.column {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+.hive-settings-row .label {
+  font-size: 0.85rem;
+  color: var(--hive-color-fg-secondary);
+}
+.hive-settings-row input.hive-input {
+  width: 100%;
+}
+.hive-settings-status {
+  font-size: 0.82rem;
+  color: var(--hive-color-fg-muted);
+}
+.hive-settings-hint {
+  font-size: 0.75rem;
+  color: var(--hive-color-fg-muted);
+}
+.hive-settings-link {
+  font: inherit;
+  font-size: 0.8rem;
+  border: none;
+  background: none;
+  color: var(--hive-color-accent);
+  cursor: pointer;
+  padding: 0;
+}
+.hive-settings-link:hover {
+  text-decoration: underline;
+}
+
+.hive-segmented {
+  display: inline-flex;
+  border: 1px solid var(--hive-color-border);
+  border-radius: var(--hive-radius);
+  overflow: hidden;
+}
+.hive-segmented-opt {
+  font: inherit;
+  font-size: 0.8rem;
+  border: none;
+  background: var(--hive-color-bg-surface);
+  color: var(--hive-color-fg-secondary);
+  cursor: pointer;
+  padding: 5px 12px;
+}
+.hive-segmented-opt + .hive-segmented-opt {
+  border-left: 1px solid var(--hive-color-border);
+}
+.hive-segmented-opt.selected {
+  background: var(--hive-color-accent-subtle);
+  color: var(--hive-color-accent);
+  font-weight: 500;
+}
+.hive-segmented-opt:hover:not(.selected) {
+  background: var(--hive-color-bg-subtle);
+}
+
+.hive-textsize-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.hive-textsize-control .hive-btn {
+  padding: 4px 10px;
+  min-width: 28px;
+  text-align: center;
+}
+.hive-textsize-value {
+  font-size: 0.82rem;
+  color: var(--hive-color-fg-secondary);
+  min-width: 3.2em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}

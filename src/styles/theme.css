@@ -106,6 +106,10 @@ body {
   max-width: 46rem;
   margin: 0 auto;
   padding: 2.5rem 2rem 6rem;
+  /* Reader text-size control: --hive-doc-scale is set on <html> by
+   * appStore's adjustTextScale (default 1 = 100%). Base matches body's
+   * inherited 0.875rem so the default render is unchanged. */
+  font-size: calc(0.875rem * var(--hive-doc-scale, 1));
 }
 
 /* click-below-to-append: fills the remaining space under the last block */
@@ -130,17 +134,23 @@ body {
 }
 
 .hive-doc h1 {
-  font-size: 1.75rem;
+  /* em, not rem — rem is always root-relative, which would leave headings
+   * flat while the reader's text-size preference resizes body copy under
+   * them. em ties heading size to .hive-doc's own (scaled) font-size. */
+  font-size: 1.75em;
 }
 .hive-doc h2 {
-  font-size: 1.375rem;
+  font-size: 1.375em;
 }
 .hive-doc h3 {
-  font-size: 1.125rem;
+  font-size: 1.125em;
 }
 
 .hive-page-title {
-  font-size: 2rem;
+  /* Same em rationale as the heading sizes above — this scales with
+   * --hive-doc-scale since .hive-page-title is always rendered inside
+   * .hive-doc. */
+  font-size: 2em;
   font-weight: 600;
   margin: 0 0 1.5rem;
   line-height: 1.2;

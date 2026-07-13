@@ -107,6 +107,7 @@ function useActions(): Result[] {
     action("While you were away", "🐝", () =>
       void import("./DigestPanel").then((m) => m.useDigestStore.getState().setOpen(true)),
     ),
+    action("Settings", "⚙️", () => store.getState().setSettingsOpen(true), "⌘,"),
     action("Open demo / test page", "🧪", () => void store.getState().openDemo()),
     action("Toggle sidebar", "◧", () => store.getState().toggleSidebar(), "⌘\\"),
     action("Focus mode", "🎯", () => store.getState().toggleFocusMode(), "⌘⇧F"),
