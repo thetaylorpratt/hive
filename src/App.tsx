@@ -119,6 +119,12 @@ function ErrorEscapeHatches() {
       : null;
   return (
     <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
+      <button
+        className="hive-btn hive-btn-primary"
+        onClick={() => void useAppStore.getState().openPage(lastOpenInput)}
+      >
+        Retry
+      </button>
       {id && (
         <button
           className="hive-btn hive-btn-secondary"
