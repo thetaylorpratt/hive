@@ -4,6 +4,7 @@ import { getPageEditTimes, setPageEditTime } from "./db";
 import { listAllWatched } from "./orgDb";
 import { DEMO_PAGE_ID } from "./demoPage";
 import type { SidebarItem } from "./orgDb";
+import { excerptsOf, type PageDiff } from "./blockDiff";
 
 /**
  * Attention engine, Tier A (PROJECT_PLAN.md §3.5): make "something you care
@@ -23,11 +24,45 @@ const editTimes = new Map<string, string>();
 
 // Block-level diffs recorded by revalidation (see lib/blockDiff.ts) —
 // session-scoped: "what changed since the copy you last had".
-import type { PageDiff } from "./blockDiff";
 const pageDiffs = new Map<string, PageDiff>();
 
+// The signed-in identity's own ids (bot id + human owner id — see
+// appStore's init), set once auth is ready. Used to filter the reader's
+// own edits out of both the page-diff banner (below) and the poll's
+// unread signal (pollOnce, further down).
+let ownUserIds = new Set<string>();
+
+export function setOwnUserIds(ids: Set<string>) {
+  ownUserIds = ids;
+}
+
+/**
+ * Records a page's block diff, filtering out any entries authored by the
+ * reader themself. `diff` may already have been computed with `ownIds`
+ * passed straight to diffBlockTrees (no-op filter here in that case); this
+ * second pass is what makes the filter effective for callers that only
+ * pass diffBlockTrees(old, new) without threading ownIds through (the
+ * default revalidation path in fetchPage.ts).
+ */
 export function notePageDiff(pageId: string, diff: PageDiff | null) {
-  if (diff) pageDiffs.set(pageId, diff);
+  if (!diff) return;
+  if (!ownUserIds.size) {
+    pageDiffs.set(pageId, diff);
+    return;
+  }
+  const entries = diff.entries.filter((e) => !e.editedBy || !ownUserIds.has(e.editedBy));
+  if (!entries.length) {
+    // Everything in this diff was the reader's own edit — nothing to show.
+    pageDiffs.delete(pageId);
+    return;
+  }
+  pageDiffs.set(pageId, {
+    added: entries.filter((e) => e.kind === "added").length,
+    removed: entries.filter((e) => e.kind === "removed").length,
+    changed: entries.filter((e) => e.kind === "edited").length,
+    entries,
+    excerpts: excerptsOf(entries),
+  });
 }
 
 export function getPageDiffs(): Record<string, PageDiff> {
@@ -70,6 +105,18 @@ export function computeUnread(items: SidebarItem[]): Set<string> {
   return unread;
 }
 
+// Called when the poll discovers a page whose latest edit came from the
+// reader's own identity (typically: edited straight in the Notion app,
+// since Hive's own writes already mark themselves seen via writeback's
+// observer — see appStore's init). appStore supplies a callback that
+// marks that page's watched items lastOpenedAt=now, so the edit is
+// recorded (editTimes still advances) without ringing the unread bell.
+let ownEditSeenHandler: ((pageId: string) => void) | null = null;
+
+export function setOwnEditSeenHandler(handler: (pageId: string) => void) {
+  ownEditSeenHandler = handler;
+}
+
 let pollOffset = 0;
 
 async function pollOnce(onChange: () => void) {
@@ -93,7 +140,7 @@ async function pollOnce(onChange: () => void) {
     try {
       const page = (await enqueue(() =>
         notion().pages.retrieve({ page_id: pageId }),
-      )) as { last_edited_time?: string };
+      )) as { last_edited_time?: string; last_edited_by?: { id?: string } };
       const edited = page.last_edited_time;
       if (edited && editTimes.get(pageId) !== edited) {
         editTimes.set(pageId, edited);
@@ -103,6 +150,11 @@ async function pollOnce(onChange: () => void) {
           /* no SQLite — in-memory only */
         }
         changed = true;
+        const editorId = page.last_edited_by?.id;
+        if (editorId && ownUserIds.has(editorId)) {
+          // Our own edit, made outside Hive — don't let it ring the bell.
+          ownEditSeenHandler?.(pageId);
+        }
       }
     } catch {
       // Unreachable page (revoked share, deleted) — skip; not this tier's job.

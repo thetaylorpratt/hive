@@ -1,0 +1,196 @@
+/* "Changed since your last copy" v2 — DiffBanner.tsx + BlockRenderer.tsx's
+ * inline highlight toggle. Own edits (see attention.ts/blockDiff.ts) never
+ * reach this UI, so everything here is, by construction, someone else's
+ * change. */
+
+.hive-diffbanner {
+  background: var(--hive-color-accent-subtle);
+  border: 1px solid var(--hive-color-border-subtle);
+  border-radius: var(--hive-radius);
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  font-size: 0.85rem;
+  color: var(--hive-color-fg-secondary);
+}
+
+.hive-diffbanner-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-weight: 500;
+  color: var(--hive-color-fg);
+}
+
+.hive-diffbanner-count {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hive-diffbanner-authors {
+  font-weight: 400;
+  color: var(--hive-color-fg-secondary);
+}
+
+.hive-diffbanner-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+.hive-diffbanner-toggle {
+  border: 1px solid var(--hive-color-border-subtle);
+  background: var(--hive-color-bg-surface);
+  color: var(--hive-color-fg);
+  border-radius: var(--hive-radius-sm);
+  padding: 3px 10px;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.hive-diffbanner-toggle:hover {
+  background: var(--hive-color-accent-subtle);
+  border-color: var(--hive-color-accent);
+}
+
+.hive-diffbanner-dismiss {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--hive-color-fg-muted);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 3px 4px;
+}
+.hive-diffbanner-dismiss:hover {
+  color: var(--hive-color-fg);
+}
+
+.hive-diffbanner-rows {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.hive-diffbanner-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: var(--hive-radius-sm);
+  cursor: pointer;
+  color: var(--hive-color-fg);
+}
+.hive-diffbanner-row:hover {
+  background: var(--hive-color-bg-surface);
+}
+
+.hive-diffbanner-icon {
+  flex: none;
+  width: 1em;
+  text-align: center;
+  font-weight: 700;
+  color: var(--hive-color-fg-muted);
+}
+.hive-diffbanner-icon.kind-added {
+  color: var(--hive-color-success-fg);
+}
+.hive-diffbanner-icon.kind-edited {
+  color: var(--hive-color-accent);
+}
+.hive-diffbanner-icon.kind-removed {
+  color: var(--hive-color-critical-fg);
+}
+
+.hive-diffbanner-text {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.hive-diffbanner-struck {
+  text-decoration: line-through;
+  color: var(--hive-color-fg-muted);
+}
+
+/* ---- inline highlight toggle (BlockRenderer's TopRow) ---- */
+
+.hive-toprow.hive-diff-added {
+  border-left: 3px solid var(--hive-color-success-fg);
+  background: var(--hive-color-success-bg);
+  border-radius: var(--hive-radius-sm);
+}
+.hive-toprow.hive-diff-edited {
+  border-left: 3px solid var(--hive-color-accent);
+  background: var(--hive-color-accent-subtle);
+  border-radius: var(--hive-radius-sm);
+}
+
+/* The ± chip: parked further out than the drag handle (-1.7em / -3.1em in
+ * lists — theme.css) and the list bullet/number markers, so none of the
+ * three ever collide in the gutter. */
+.hive-diff-chip {
+  position: absolute;
+  left: -4.5em;
+  top: 0.2em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.3em;
+  height: 1.3em;
+  border-radius: 4px;
+  border: none;
+  font-size: 0.75em;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--hive-color-accent);
+  background: var(--hive-color-accent-subtle);
+  cursor: pointer;
+}
+.hive-diff-chip:hover {
+  background: var(--hive-color-accent);
+  color: var(--hive-color-fg-inverse);
+}
+
+.hive-diff-popover {
+  min-width: 220px;
+  max-width: 360px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--hive-color-bg-surface);
+  border: 1px solid var(--hive-color-border-subtle);
+  border-radius: var(--hive-radius);
+  box-shadow: var(--hive-shadow-popover);
+  padding: 10px 12px;
+}
+
+.hive-diff-popover-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--hive-color-fg-secondary);
+  margin-bottom: 6px;
+}
+
+.hive-diff-popover-body {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.hive-diff-word-same {
+  color: var(--hive-color-fg-muted);
+}
+.hive-diff-word-added {
+  color: var(--hive-color-accent);
+  background: var(--hive-color-accent-subtle);
+  border-radius: 2px;
+}
+.hive-diff-word-removed {
+  color: var(--hive-color-critical-fg);
+  background: var(--hive-color-critical-bg);
+  text-decoration: line-through;
+  border-radius: 2px;
+}

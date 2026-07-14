@@ -16,6 +16,8 @@ import {
   getPageDiffs,
   noteEditTime,
   primeAttention,
+  setOwnEditSeenHandler,
+  setOwnUserIds,
   startAttentionEngine,
 } from "../lib/attention";
 import type { PageDiff } from "../lib/blockDiff";
@@ -303,6 +305,16 @@ interface AppState {
   checkForUpdates: (manual: boolean) => Promise<void>;
   applyUpdate: () => Promise<void>;
   pageDiffs: Record<string, PageDiff>;
+  /** The signed-in identity's own ids (Hive bot id + human owner id),
+   * captured during init — see diffBlockTrees/notePageDiff (blockDiff.ts,
+   * attention.ts) for why: "changed since your last copy" must exclude the
+   * reader's own edits, made from either identity. */
+  ownUserIds: Set<string>;
+  /** Track-changes-style toggle: when true, BlockRenderer highlights blocks
+   * that appear in the current page's diff. Resets to false on every page
+   * navigation (see openPage/openDemo). */
+  showDiffHighlights: boolean;
+  setShowDiffHighlights: (show: boolean) => void;
   shortcutSheetOpen: boolean;
   peek: { pageId: string; anchorY: number } | null;
   breadcrumbs: Crumb[];
@@ -494,6 +506,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   updateState: "idle",
   availableVersion: null,
   pageDiffs: {},
+  ownUserIds: new Set<string>(),
+  showDiffHighlights: false,
+  setShowDiffHighlights: (show: boolean) => set({ showDiffHighlights: show }),
   shortcutSheetOpen: false,
   peek: null,
   breadcrumbs: [],
@@ -603,6 +618,15 @@ export const useAppStore = create<AppState>((set, get) => ({
       // Prefer the human who owns the integration over the bot's name
       const userName = me.bot?.owner?.user?.name ?? me.name ?? "integration";
       set({ auth: { status: "ready", userName } });
+      // Both identities Notion can report for this one integration: the bot
+      // id (Hive's own writes) and the human id (edits made in the Notion
+      // app itself). "Changed since your last copy" must exclude both.
+      const ownIds = new Set<string>();
+      if (me.id) ownIds.add(me.id);
+      const humanId = me.bot?.owner?.user?.id;
+      if (humanId) ownIds.add(humanId);
+      set({ ownUserIds: ownIds });
+      setOwnUserIds(ownIds);
       void import("../lib/inbox").then((m) =>
         m.startInbox(
           me.bot?.owner?.user?.id ?? null,
@@ -614,10 +638,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         void get().recomputeUnread();
         void get().refreshCurrentIfStale();
       });
-      // Your own edits must not ring the unread bell: every local write
-      // marks the page's watched entries as "seen now" (throttled per page)
-      // so the attention engine only alerts on OTHER people's changes.
-      writeback.setWriteObserver((wroteMsgPageId) => {
+      // Your own edits must not ring the unread bell: every local write, and
+      // every own-authored edit the attention poll discovers (made straight
+      // in the Notion app), marks the page's watched entries as "seen now"
+      // (throttled per page) so the attention engine only alerts on OTHER
+      // people's changes. Both sources share the same throttle map so a
+      // near-simultaneous write + poll observation don't double up.
+      const markOwnEditSeen = (wroteMsgPageId: string) => {
         const now = Date.now();
         if ((ownEditMarked.get(wroteMsgPageId) ?? 0) > now - 30_000) return;
         ownEditMarked.set(wroteMsgPageId, now);
@@ -634,7 +661,9 @@ export const useAppStore = create<AppState>((set, get) => ({
             /* best-effort */
           }
         })();
-      });
+      };
+      writeback.setWriteObserver(markOwnEditSeen);
+      setOwnEditSeenHandler(markOwnEditSeen);
       void import("../lib/indexer").then((m) => m.startIndexer());
     } catch (err) {
       set({
@@ -679,6 +708,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       focusBlockId: null,
       writeError: null,
       searchView: null,
+      // A new page means a new diff (or none) — the "show in doc" toggle
+      // is per-page, not a sticky preference.
+      showDiffHighlights: false,
       // same-page refresh keeps the threads — nulling them unmounted every
       // comment indicator and blanked the open panel until the reload
       commentThreads: samePage ? get().commentThreads : null,
@@ -827,7 +859,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (navSeq !== nav) return; // user navigated elsewhere while we loaded
     set({
       pageId: DEMO_PAGE_ID, page: data, pageStatus: "idle", pageError: null,
-      focusBlockId: null, writeError: null,
+      focusBlockId: null, writeError: null, showDiffHighlights: false,
       // The demo fixture is always local (SQLite page_cache or an in-memory
       // fallback) — it's the cache-hit path, so it gets the same felt-speed
       // proof chip as a real cached page.

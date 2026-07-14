@@ -1,5 +1,6 @@
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { createPortal } from "react-dom";
 import katex from "katex";
 import { htmlToRichText, richTextToHtml } from "../lib/richTextHtml";
 import "katex/dist/katex.min.css";
@@ -10,6 +11,9 @@ import { FallbackCard } from "./FallbackCard";
 import { DatabaseView } from "./DatabaseView";
 import { useAppStore } from "../store/appStore";
 import { EDITABLE_TYPES } from "../lib/writeback";
+import { diffWords, type DiffEntry } from "../lib/blockDiff";
+import { workspaceUsers } from "../lib/users";
+import "../styles/diffbanner.css";
 
 /**
  * Data-driven block renderer (ARCHITECTURE.md §5). One dispatch table keyed
@@ -80,14 +84,151 @@ function DragHandle({ blockId }: { blockId: string }) {
   );
 }
 
+/** Resolves a workspace user id to a display name, best-effort (silently
+ * gives up on lookup failure — the popover just falls back to a generic
+ * label). Shared by the diff chip's popover title. */
+function useAuthorName(id: string | null): string | null {
+  const [name, setName] = useState<string | null>(null);
+  useEffect(() => {
+    if (!id) {
+      setName(null);
+      return;
+    }
+    let cancelled = false;
+    workspaceUsers()
+      .then((users) => {
+        if (cancelled) return;
+        setName(users.find((u) => u.id === id)?.name ?? null);
+      })
+      .catch(() => {
+        /* best-effort — chip still opens, just without a name */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+  return name;
+}
+
+/** Portal popover for the ± diff chip. Mirrors DatabaseView.tsx's Popover:
+ * position:fixed computed from the anchor's rect, rendered into <body> so
+ * the doc column's overflow (and any ancestor's) can't clip it — the same
+ * WebKit lesson DatabaseView's comment documents. */
+function DiffPopover({
+  anchorRef,
+  onClose,
+  children,
+}: {
+  anchorRef: React.RefObject<HTMLElement | null>;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const popRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const anchor = anchorRef.current;
+    if (!anchor) return;
+    const r = anchor.getBoundingClientRect();
+    const top = Math.min(r.bottom + 4, window.innerHeight - 60);
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - 380));
+    setPos({ top, left });
+  }, [anchorRef]);
+
+  useEffect(() => {
+    const away = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (popRef.current?.contains(t) || anchorRef.current?.contains(t)) return;
+      onClose();
+    };
+    window.addEventListener("mousedown", away, true);
+    window.addEventListener("scroll", onClose, true);
+    window.addEventListener("resize", onClose);
+    return () => {
+      window.removeEventListener("mousedown", away, true);
+      window.removeEventListener("scroll", onClose, true);
+      window.removeEventListener("resize", onClose);
+    };
+  }, [anchorRef, onClose]);
+
+  if (!pos) return null;
+  return createPortal(
+    <div
+      ref={popRef}
+      className="hive-diff-popover"
+      style={{ position: "fixed", top: pos.top, left: pos.left, zIndex: 1000 }}
+    >
+      {children}
+    </div>,
+    document.body,
+  );
+}
+
+/** The gutter ± chip for an edited block: opens a word-level diff popover.
+ * Parked at -4.5em — clear of the drag handle (-1.7em / -3.1em in lists)
+ * and the ::before bullet/number markers, which have collided before. */
+function DiffChip({ entry }: { entry: DiffEntry }) {
+  const [open, setOpen] = useState(false);
+  const chipRef = useRef<HTMLButtonElement>(null);
+  const authorName = useAuthorName(entry.editedBy);
+  const words = useMemo(
+    () => diffWords(entry.oldText, entry.newText),
+    [entry.oldText, entry.newText],
+  );
+
+  return (
+    <>
+      <button
+        ref={chipRef}
+        type="button"
+        className="hive-diff-chip"
+        title="Show changes"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+      >
+        ±
+      </button>
+      {open && (
+        <DiffPopover anchorRef={chipRef} onClose={() => setOpen(false)}>
+          <div className="hive-diff-popover-title">Changed by {authorName ?? "someone else"}</div>
+          <div className="hive-diff-popover-body">
+            {words.map((w, i) => (
+              <span key={i} className={`hive-diff-word-${w.type}`}>
+                {w.text}
+              </span>
+            ))}
+          </div>
+        </DiffPopover>
+      )}
+    </>
+  );
+}
+
 /** Wraps one top-level block with its gutter drag handle (movable types
  * only) and a stable data-block-id the container reads to compute drop
  * gaps. Never wraps the contentEditable element itself or anything inside
- * EditableText — this div sits alongside/around it, not inside it. */
+ * EditableText — this div sits alongside/around it, not inside it.
+ *
+ * Also carries the "changed since your last copy" highlight toggle (the
+ * DiffBanner's "Show in doc" button): when on and this block appears in
+ * the current page's diff, the row gets a subtle tint/border class, and
+ * edited blocks get the ± chip. Classes go on this wrapper only — the
+ * contentEditable DOM inside stays untouched. */
 function TopRow({ block, children }: { block: HiveBlock; children: ReactNode }) {
+  const pageId = useAppStore((s) => s.pageId);
+  const showDiffHighlights = useAppStore((s) => s.showDiffHighlights);
+  const entries = useAppStore((s) => (pageId ? s.pageDiffs[pageId]?.entries : undefined));
+  const entry =
+    showDiffHighlights && entries ? entries.find((e) => e.blockId === block.id) : undefined;
+  const diffClass =
+    entry?.kind === "added" ? " hive-diff-added" : entry?.kind === "edited" ? " hive-diff-edited" : "";
+
   return (
-    <div className="hive-toprow" data-block-id={block.id}>
+    <div className={`hive-toprow${diffClass}`} data-block-id={block.id}>
       {isMovableBlock(block) && <DragHandle blockId={block.id} />}
+      {entry?.kind === "edited" && <DiffChip entry={entry} />}
       {children}
     </div>
   );

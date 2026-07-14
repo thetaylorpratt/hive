@@ -15,6 +15,7 @@ import { InboxPanel } from "./components/InboxPanel";
 import { DigestPanel } from "./components/DigestPanel";
 import { BacklinksSection } from "./components/BacklinksSection";
 import { SettingsModal } from "./components/SettingsModal";
+import { DiffBanner } from "./components/DiffBanner";
 import { CaptureModal } from "./components/CaptureModal";
 import { HomeScreen } from "./components/HomeScreen";
 import { EmojiPicker } from "./components/EmojiPicker";
@@ -270,7 +271,6 @@ function Content() {
   const focusMode = useAppStore((s) => s.focusMode);
   const pageId = useAppStore((s) => s.pageId);
   const pageDiffs = useAppStore((s) => s.pageDiffs);
-  const dismissDiff = useAppStore((s) => s.dismissDiff);
   const displayPrefs = useAppStore((s) => s.displayPrefs);
   const loadMs = useAppStore((s) => s.loadMs);
   const loadSource = useAppStore((s) => s.loadSource);
@@ -294,27 +294,7 @@ function Content() {
           displayPrefs.smallText ? " small-text" : ""
         }${displayPrefs.fullWidth ? " full-width" : ""}`}
       >
-        {diff && (
-          <div className="hive-diff-banner">
-            <div className="summary">
-              <span>
-                Changed since your last copy: {diff.added > 0 && `${diff.added} added`}
-                {diff.added > 0 && (diff.changed > 0 || diff.removed > 0) && " · "}
-                {diff.changed > 0 && `${diff.changed} edited`}
-                {diff.changed > 0 && diff.removed > 0 && " · "}
-                {diff.removed > 0 && `${diff.removed} removed`}
-              </span>
-              <button onClick={() => pageId && dismissDiff(pageId)}>×</button>
-            </div>
-            {diff.excerpts.length > 0 && (
-              <ul>
-                {diff.excerpts.map((x, i) => (
-                  <li key={i}>{x}</li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
+        {diff && <DiffBanner />}
         <h1 className="hive-page-title">
           <PageIcon emoji={emoji} />
           <span
