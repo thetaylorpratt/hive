@@ -170,10 +170,21 @@ function focusAdjacentEditable(current: HTMLElement, dir: "prev" | "next"): bool
   const target = dir === "prev" ? all[i - 1] : all[i + 1];
   if (!target) return false;
   target.focus({ preventScroll: true });
+  // Empty blocks need a <br> caret anchor — WKWebView won't hold a range in
+  // a childless element (arrow-nav onto an empty sub-bullet was a dead end,
+  // same root as the click case in onMouseUp).
+  if (target.childNodes.length === 0) {
+    target.appendChild(document.createElement("br"));
+  }
   const sel = window.getSelection();
   const range = document.createRange();
-  range.selectNodeContents(target);
-  range.collapse(dir === "next"); // next → caret at START, prev → at END
+  if (target.childNodes.length === 1 && target.firstChild?.nodeName === "BR") {
+    range.setStart(target, 0);
+    range.collapse(true);
+  } else {
+    range.selectNodeContents(target);
+    range.collapse(dir === "next"); // next → caret at START, prev → at END
+  }
   sel?.removeAllRanges();
   sel?.addRange(range);
   target.scrollIntoView({ block: "nearest" });

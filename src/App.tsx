@@ -346,7 +346,14 @@ function Content() {
             </>
           )}
           {page.fromCache ? "served from cache" : "fresh from Notion"} · fetched{" "}
-          {new Date(page.fetchedAt).toLocaleString()}
+          {new Date(page.fetchedAt).toLocaleString()}{" "}
+          <button
+            className="hive-refresh-btn"
+            title="Refresh from Notion"
+            onClick={() => pageId && void useAppStore.getState().openPage(pageId)}
+          >
+            ↻
+          </button>
           {pageStatus === "refreshing" && " · refreshing…"}
           {canEdit ? " · editable" : " · read-only until token"}
           {` · ${words} words`}

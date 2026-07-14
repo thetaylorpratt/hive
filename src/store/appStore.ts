@@ -571,6 +571,21 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
       void get().refreshCurrentIfStale();
     });
+    // Element blur never fires when the whole WINDOW blurs — switching to
+    // another app left the focused block's typed-but-uncommitted text
+    // stranded in the DOM (the classic "my last checkmark didn't save").
+    window.addEventListener("blur", () => {
+      const el = document.activeElement as HTMLElement | null;
+      const bid = el?.closest?.("[data-bid]")
+        ? (el.closest("[data-bid]") as HTMLElement).dataset.bid
+        : undefined;
+      if (bid) requestCommit(bid);
+    });
+    // Quasi-live pickup of OTHER people's changes: probe the open page
+    // every 30s. The probe's own guards (busy queue, pending writes, recent
+    // local write, own-echo editor, active editing session, 30s throttle)
+    // make this cheap and safe.
+    setInterval(() => void get().refreshCurrentIfStale(), 30_000);
 
     // navigator.onLine is a hint at best in WKWebView (it can lag or lie),
     // so we don't trust it to CLEAR the badge — only a real fetch success
@@ -1482,7 +1497,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const remote = (await enqueue(() =>
         notion().pages.retrieve({ page_id: pageId }),
-      )) as { last_edited_time?: string };
+      )) as { last_edited_time?: string; last_edited_by?: { id?: string } };
+      // The newest edit being OUR OWN (either identity) means there's
+      // nothing to pick up — swapping on our own echo churned the doc
+      // under the user about once a minute while they worked.
+      const editor = remote.last_edited_by?.id;
+      if (editor && get().ownUserIds.has(editor)) return;
       const loaded = page.page.last_edited_time as string | undefined;
       if (
         remote.last_edited_time && loaded &&

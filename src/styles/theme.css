@@ -117,6 +117,18 @@ body {
   min-height: 20vh;
   cursor: text;
 }
+.hive-refresh-btn {
+  border: none;
+  background: none;
+  color: var(--hive-color-fg-muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 0 2px;
+  vertical-align: baseline;
+}
+.hive-refresh-btn:hover {
+  color: var(--hive-color-accent);
+}
 .hive-empty-page-hint {
   display: inline-block;
   padding-top: 4px;
