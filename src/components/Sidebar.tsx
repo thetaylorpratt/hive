@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } fr
 import { createPortal } from "react-dom";
 import { ArrowClockwise, Bell, PencilSimpleLine } from "@phosphor-icons/react";
 import { Glyph } from "../lib/iconSets";
-import { useAppStore } from "../store/appStore";
+import { useAppStore, PRIVATE_SPACE_ID } from "../store/appStore";
 import { SpaceSwitcher } from "./SpaceSwitcher";
 import type { SidebarItem, Tier } from "../lib/orgDb";
 import { subscribeReminders, dueReminders } from "../lib/reminders";
@@ -280,7 +280,12 @@ function ItemContextMenu({
     };
   }, [onClose]);
 
-  const otherSpaces = spaces.filter((s) => s.id !== activeSpaceId);
+  // The virtual Private space is never a valid Move-to target — there's no
+  // real Space-scoped tier for the item to land in there.
+  const otherSpaces = spaces.filter(
+    (s) => s.id !== activeSpaceId && s.id !== PRIVATE_SPACE_ID,
+  );
+  const inPrivateSpace = activeSpaceId === PRIVATE_SPACE_ID;
 
   const runAndClose = (fn: () => Promise<unknown>) => {
     onClose();
@@ -314,29 +319,33 @@ function ItemContextMenu({
         </>
       )}
 
-      {folders.map((folder) => (
-        <button
-          key={folder.id}
-          className="row"
-          onClick={() => runAndClose(() => fileItemIntoFolder(item.id, folder.id))}
-        >
-          Add to {folder.name}
-        </button>
-      ))}
-      <button
-        className="row create"
-        onClick={() =>
-          runAndClose(async () => {
-            await createFolder();
-            const created = useAppStore.getState().folders;
-            const newest = created[created.length - 1];
-            if (newest) await fileItemIntoFolder(item.id, newest.id);
-          })
-        }
-      >
-        New folder…
-      </button>
-      <div className="sep" />
+      {!inPrivateSpace && (
+        <>
+          {folders.map((folder) => (
+            <button
+              key={folder.id}
+              className="row"
+              onClick={() => runAndClose(() => fileItemIntoFolder(item.id, folder.id))}
+            >
+              Add to {folder.name}
+            </button>
+          ))}
+          <button
+            className="row create"
+            onClick={() =>
+              runAndClose(async () => {
+                await createFolder();
+                const created = useAppStore.getState().folders;
+                const newest = created[created.length - 1];
+                if (newest) await fileItemIntoFolder(item.id, newest.id);
+              })
+            }
+          >
+            New folder…
+          </button>
+          <div className="sep" />
+        </>
+      )}
 
       {item.tier === "today" && (
         <button className="row" onClick={() => runAndClose(() => setItemTier(item.id, "pinned"))}>
@@ -702,8 +711,9 @@ function SpaceName() {
   const [draft, setDraft] = useState("");
   const space = spaces.find((s) => s.id === activeSpaceId);
   if (!space) return null;
+  const isPrivate = space.id === PRIVATE_SPACE_ID;
 
-  if (editing) {
+  if (editing && !isPrivate) {
     return (
       <input
         className="hive-input hive-space-name-input"
@@ -724,8 +734,9 @@ function SpaceName() {
   return (
     <div
       className="hive-space-name"
-      title="Double-click to rename"
+      title={isPrivate ? undefined : "Double-click to rename"}
       onDoubleClick={() => {
+        if (isPrivate) return;
         setDraft(space.name);
         setEditing(true);
       }}
@@ -786,21 +797,15 @@ function InboxBell() {
   );
 }
 
-const PRIVATE_COLLAPSED_KEY = "hive-private-collapsed";
-
-/** Notion-parity "Private" section (feature A): the user's private pages,
- * discovered automatically — no manual pinning. Sits above Pinned in every
- * Space, since private pages aren't Space-scoped. */
-function PrivateSection() {
+/** The virtual Private space's own body (feature A rebuild): replaces the
+ * Pinned/Folders/Today sections entirely when activeSpaceId is the Private
+ * space — a dedicated tree view of the user's auto-discovered private
+ * Notion pages (lib/privatePages.ts), no manual pinning, not Space-scoped
+ * org data at all. Favorites still render above this (see Sidebar()) since
+ * favorites transcend Spaces. */
+function PrivateSpaceView() {
   const mcpStatus = useAppStore((s) => s.mcpStatus);
   const [pages, setPages] = useState<PrivatePageEntry[]>([]);
-  const [collapsed, setCollapsed] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem(PRIVATE_COLLAPSED_KEY) === "1";
-    } catch {
-      return false;
-    }
-  });
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
@@ -822,16 +827,6 @@ function PrivateSection() {
     };
   }, []);
 
-  const toggleCollapsed = () => {
-    const next = !collapsed;
-    setCollapsed(next);
-    try {
-      localStorage.setItem(PRIVATE_COLLAPSED_KEY, next ? "1" : "0");
-    } catch {
-      /* best-effort */
-    }
-  };
-
   const onRefreshClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (refreshing) return;
@@ -845,11 +840,8 @@ function PrivateSection() {
 
   return (
     <div className="hive-side-section">
-      <div className="hive-side-heading hive-side-heading-collapsible" onClick={toggleCollapsed}>
-        <span>
-          <span className="chevron">{collapsed ? "▸" : "▾"}</span>
-          Private
-        </span>
+      <div className="hive-side-heading">
+        <span>Private</span>
         <button
           className={`hive-side-heading-action${refreshing ? " spinning" : ""}`}
           title="Refresh private pages"
@@ -858,21 +850,19 @@ function PrivateSection() {
           <ArrowClockwise size={11} weight="bold" />
         </button>
       </div>
-      {!collapsed && (
-        <div className="hive-tier-list">
-          {pages.length === 0 ? (
-            <div className="hive-side-empty">
-              {mcpStatus !== "connected"
-                ? "Connect personal Notion to see your private pages"
-                : "Nothing discovered yet — ↻"}
-            </div>
-          ) : (
-            pages.map((p) => (
-              <PageTreeRow key={p.id} id={p.id} title={p.title} icon={p.icon} depth={0} />
-            ))
-          )}
-        </div>
-      )}
+      <div className="hive-tier-list">
+        {pages.length === 0 ? (
+          <div className="hive-side-empty">
+            {mcpStatus !== "connected"
+              ? "Connect personal Notion to see your private pages"
+              : "Nothing discovered yet — ↻"}
+          </div>
+        ) : (
+          pages.map((p) => (
+            <PageTreeRow key={p.id} id={p.id} title={p.title} icon={p.icon} depth={0} />
+          ))
+        )}
+      </div>
     </div>
   );
 }
@@ -956,43 +946,47 @@ export function Sidebar() {
         </div>
       )}
 
-      <PrivateSection />
+      {activeSpaceId === PRIVATE_SPACE_ID ? (
+        <PrivateSpaceView />
+      ) : (
+        <>
+          <div className="hive-side-section">
+            <div className="hive-side-heading">
+              <span>Pinned</span>
+              <button
+                className="hive-side-heading-action"
+                title="New folder"
+                onClick={() => void createFolder()}
+              >
+                + folder
+              </button>
+            </div>
+            {folders.map((folder) => (
+              <FolderBlock
+                key={folder.id}
+                folderId={folder.id}
+                name={folder.name}
+                items={sidebarItems.filter(
+                  (i) => i.tier === "pinned" && i.parentFolderId === folder.id,
+                )}
+              />
+            ))}
+            <TierList
+              tier="pinned"
+              items={pinnedLoose}
+              emptyHint="drag from Today, or 📌 a doc"
+            />
+          </div>
 
-      <div className="hive-side-section">
-        <div className="hive-side-heading">
-          <span>Pinned</span>
-          <button
-            className="hive-side-heading-action"
-            title="New folder"
-            onClick={() => void createFolder()}
-          >
-            + folder
-          </button>
-        </div>
-        {folders.map((folder) => (
-          <FolderBlock
-            key={folder.id}
-            folderId={folder.id}
-            name={folder.name}
-            items={sidebarItems.filter(
-              (i) => i.tier === "pinned" && i.parentFolderId === folder.id,
-            )}
-          />
-        ))}
-        <TierList
-          tier="pinned"
-          items={pinnedLoose}
-          emptyHint="drag from Today, or 📌 a doc"
-        />
-      </div>
-
-      <div className="hive-side-section">
-        <div className="hive-side-heading">
-          <span>Today</span>
-          <span className="hive-side-heading-note">auto-archives 24h</span>
-        </div>
-        <TierList tier="today" items={today} emptyHint="open a doc to start" />
-      </div>
+          <div className="hive-side-section">
+            <div className="hive-side-heading">
+              <span>Today</span>
+              <span className="hive-side-heading-note">auto-archives 24h</span>
+            </div>
+            <TierList tier="today" items={today} emptyHint="open a doc to start" />
+          </div>
+        </>
+      )}
       </div>
       <VersionFooter />
       <SpaceSwitcher />

@@ -2,26 +2,35 @@ import Database from "@tauri-apps/plugin-sql";
 import { callTool, mcpConnected } from "./notionMcp";
 import { normalizePageId } from "./fetchPage";
 import { loadConfig } from "./config";
+import { notion } from "./notionClient";
+import { enqueue } from "./queue";
 
 /**
  * Discovery + classification of the user's PRIVATE Notion pages — the
  * workspace-level "Private" section Notion shows automatically, with no
- * manual pinning. There is no enumeration API for this, so Hive infers it:
+ * manual pinning. There is no enumeration API for this, so Hive infers it
+ * with a TWO-FACTOR classifier — both must hold for a candidate to be
+ * stored as private:
  *
- *  1. notion-search (semantic, broad queries) surfaces candidate page ids
- *     the user is likely to actually use.
- *  2. notion-fetch on a candidate returns enhanced-markdown-with-XML-tags;
- *     an EMPTY <ancestor-path></ancestor-path> means the page has no parent
- *     visible to the API — i.e. it's a private ROOT page (teamspace pages
- *     always have ancestry). That's the classifier.
- *  3. Once a page id is classified (private root or not), it's remembered
- *     forever in the private_page table — never re-classified, never
- *     deleted (private roots stay put; Notion doesn't offer a "make
- *     public" that would need to reverse this).
+ *  (a) Ancestor factor — notion-fetch's enhanced-markdown-with-XML-tags
+ *      payload has an <ancestor-path> element that exists AND has no child
+ *      elements (no <parent-page>/<ancestor-N-page> tags). A teamspace page
+ *      always has ancestry; a private root does not. Parsed leniently via
+ *      DOMParser in text/html mode (the payload isn't well-formed XML, and
+ *      HTML parsing silently "un-self-closes" custom tags like
+ *      <parent-page .../> — checking element CHILDREN, not textContent,
+ *      is what makes this reliable; textContent is empty either way since
+ *      the ancestor info lives in attributes, not text nodes).
+ *  (b) Bot-visibility factor — a REST `pages.retrieve` for the same id
+ *      either FAILS (the integration can't read it — not shared into any
+ *      connected teamspace) or the id is one of Hive's own scratchpad /
+ *      capture page ids. Those two are deliberately shared with the
+ *      integration (so Hive can write to them) yet are still the user's
+ *      private pages — the explicit override exists for exactly that.
  *
- * config.json's scratchpad/capture page ids are always private-relevant
- * (Hive created them there) and are upserted unconditionally, bypassing the
- * ancestor-path check.
+ * Once a page id is classified (private or not), it's remembered forever —
+ * never re-probed, never deleted (private roots stay put; Notion doesn't
+ * offer a "make public" that would need to reverse this).
  */
 
 let dbPromise: Promise<Database> | null = null;
@@ -33,15 +42,20 @@ function getDb(): Promise<Database> {
   return dbPromise;
 }
 
+// v2: the v0.10.0 table (`private_page`) misclassified team pages due to a
+// parsing bug (see parseAncestorPath below) — bumping the table name resets
+// the store cleanly rather than trying to selectively repair bad rows.
+const TABLE = "private_page_v2";
+
 let tableEnsured = false;
 async function ensureTable(db: Database): Promise<void> {
   if (tableEnsured) return;
   await db.execute(
-    `CREATE TABLE IF NOT EXISTS private_page (
+    `CREATE TABLE IF NOT EXISTS ${TABLE} (
        notion_page_id TEXT PRIMARY KEY,
        title TEXT,
        icon TEXT,
-       last_seen_at TEXT
+       classified_at TEXT
      )`,
   );
   tableEnsured = true;
@@ -59,10 +73,10 @@ interface FallbackRecord {
   id: string;
   title: string;
   icon: string | null;
-  lastSeenAt: string;
+  classifiedAt: string;
 }
 
-const LS_TABLE_KEY = "hive-private-pages-fallback";
+const LS_TABLE_KEY = "hive-private-pages-v2-fallback";
 
 function lsRead(): Record<string, FallbackRecord> {
   try {
@@ -93,7 +107,7 @@ async function isClassified(id: string): Promise<boolean> {
     const db = await getDb();
     await ensureTable(db);
     const rows = await db.select<{ n: number }[]>(
-      "SELECT 1 AS n FROM private_page WHERE notion_page_id = $1 LIMIT 1",
+      `SELECT 1 AS n FROM ${TABLE} WHERE notion_page_id = $1 LIMIT 1`,
       [id],
     );
     return rows.length > 0;
@@ -112,17 +126,17 @@ async function upsertPrivate(
     const db = await getDb();
     await ensureTable(db);
     await db.execute(
-      `INSERT INTO private_page (notion_page_id, title, icon, last_seen_at)
+      `INSERT INTO ${TABLE} (notion_page_id, title, icon, classified_at)
        VALUES ($1, $2, $3, $4)
        ON CONFLICT(notion_page_id) DO UPDATE SET
          title = excluded.title,
          icon = excluded.icon,
-         last_seen_at = excluded.last_seen_at`,
+         classified_at = excluded.classified_at`,
       [id, title, icon, now],
     );
   } catch {
     const map = lsRead();
-    map[id] = { id, title, icon, lastSeenAt: now };
+    map[id] = { id, title, icon, classifiedAt: now };
     lsWrite(map);
   }
 }
@@ -134,7 +148,7 @@ export async function listPrivatePages(): Promise<PrivatePageEntry[]> {
     const rows = await db.select<
       { notion_page_id: string; title: string | null; icon: string | null }[]
     >(
-      "SELECT notion_page_id, title, icon FROM private_page ORDER BY title COLLATE NOCASE ASC",
+      `SELECT notion_page_id, title, icon FROM ${TABLE} ORDER BY title COLLATE NOCASE ASC`,
     );
     return rows.map((r) => ({
       id: r.notion_page_id,
@@ -179,33 +193,53 @@ function unwrapToolText(raw: string): string {
   return raw;
 }
 
+/** Icon transform: the fetch tool's `icon` attribute on the root <page> is
+ * either an emoji, an https URL, or (for Notion's built-in tintable icon
+ * set) a bare name like "icons/pencil_lightgray" — NOT renderable as-is
+ * (that's the literal-text-icon bug). Turn the builtin form into the same
+ * icons.notion.so SVG URL the REST icon.icon.{name,color} shape maps to
+ * (see pageMeta.ts's pageEmoji); leave emoji and URLs untouched. */
+export function transformFetchIcon(icon: string | null): string | null {
+  if (!icon) return null;
+  if (icon.startsWith("http://") || icon.startsWith("https://")) return icon;
+  if (icon.startsWith("icons/")) return `https://www.notion.so/${icon}.svg`;
+  return icon;
+}
+
+/**
+ * Factor (a): does this notion-fetch XML payload's <ancestor-path> exist
+ * AND have no child elements? Exported standalone for testability. Checks
+ * `children.length`, NOT textContent — ancestor tags like
+ * <parent-page url="..." title="..."/> carry their info in ATTRIBUTES, so
+ * textContent is empty whether or not the tag is present (that was the
+ * v0.10.0 bug: an ancestor-path containing real ancestor tags still had
+ * empty textContent and was misread as a private root).
+ */
+export function parseAncestorPath(xml: string): boolean {
+  const doc = new DOMParser().parseFromString(xml, "text/html");
+  const ancestorEl = doc.querySelector("ancestor-path");
+  // Missing tag altogether = unconfirmed; don't guess private.
+  if (!ancestorEl) return false;
+  return ancestorEl.children.length === 0;
+}
+
 interface FetchMeta {
-  isPrivateRoot: boolean;
+  ancestorEligible: boolean;
   title: string | null;
   icon: string | null;
 }
 
-/** Lenient parse of notion-fetch's enhanced-markdown-with-XML-tags payload.
- * DOMParser in text/html mode (not strict XML) — same trick parseDiscussions
- * in notionMcp.ts uses, since the payload isn't well-formed XML. */
+/** Lenient parse of notion-fetch's enhanced-markdown-with-XML-tags payload. */
 function parseFetchMeta(xml: string): FetchMeta {
   const doc = new DOMParser().parseFromString(xml, "text/html");
-  const ancestorEl = doc.querySelector("ancestor-path");
-  // Only classify "private root" when the tag is present AND empty — if the
-  // tag is missing altogether we haven't confirmed what that means, so
-  // don't guess.
-  const isPrivateRoot =
-    !!ancestorEl && (ancestorEl.textContent ?? "").trim().length === 0;
   // The root <page ...> wrapper is the first `page` element in document
   // order; any child-page links inside <content> appear later, as
   // descendants, so this reliably picks the fetched page's own attrs.
   const rootPage = doc.querySelector("page");
-  const title = rootPage?.getAttribute("title");
-  const icon = rootPage?.getAttribute("icon");
   return {
-    isPrivateRoot,
-    title: title || null,
-    icon: icon || null,
+    ancestorEligible: parseAncestorPath(xml),
+    title: rootPage?.getAttribute("title") || null,
+    icon: rootPage?.getAttribute("icon") || null,
   };
 }
 
@@ -218,30 +252,47 @@ async function fetchMeta(id: string): Promise<FetchMeta | null> {
   }
 }
 
-async function classifyAndStore(id: string, knownTitle: string | null): Promise<void> {
-  const meta = await fetchMeta(id);
-  if (!meta || !meta.isPrivateRoot) return;
-  await upsertPrivate(id, meta.title ?? knownTitle ?? "Untitled", meta.icon);
-}
-
-async function ensureConfigPages(): Promise<void> {
+/** Factor (b)'s REST probe: is this id readable by the bot integration at
+ * all? Run through the shared rate-limited queue like every other Notion
+ * REST call in the app. */
+async function isReadableByBot(id: string): Promise<boolean> {
   try {
-    const cfg = await loadConfig();
-    const ids = [cfg.scratchpad_page_id, cfg.capture_page_id].filter(
-      (x): x is string => !!x,
-    );
-    for (const raw of ids) {
-      const id = canonicalId(raw);
-      if (await isClassified(id)) continue;
-      const meta = await fetchMeta(id);
-      await upsertPrivate(id, meta?.title ?? "Untitled", meta?.icon ?? null);
-    }
+    await enqueue(() => notion().pages.retrieve({ page_id: id }));
+    return true;
   } catch {
-    /* config unavailable — skip, retried on next refresh */
+    return false;
   }
 }
 
-const SEARCH_QUERIES = ["notes", "plan", "draft"];
+interface ConfigPageIds {
+  scratchpadId: string | null;
+  captureId: string | null;
+}
+
+/** Two-factor classification. Both factors must hold for the candidate to
+ * be stored: (a) the ancestor-path is present and empty, and (b) either the
+ * REST probe fails (not bot-readable) or the id is Hive's own scratchpad /
+ * capture page (explicitly shared, still private). Skips storing anything
+ * with no real title anywhere rather than upserting a junk "Untitled" row. */
+async function classifyAndStore(
+  id: string,
+  knownTitle: string,
+  cfg: ConfigPageIds,
+): Promise<void> {
+  const meta = await fetchMeta(id);
+  if (!meta || !meta.ancestorEligible) return; // factor (a) failed
+
+  const isConfigPage = id === cfg.scratchpadId || id === cfg.captureId;
+  const factorB = isConfigPage || !(await isReadableByBot(id));
+  if (!factorB) return; // bot can read it, and it isn't an explicit override
+
+  const title = (meta.title || knownTitle || "").trim();
+  if (!title) return; // no real title anywhere — skip rather than store junk
+
+  await upsertPrivate(id, title, transformFetchIcon(meta.icon));
+}
+
+const SEARCH_QUERIES = ["notes", "plan", "draft", "meeting", "scratchpad"];
 const CLASSIFY_BUDGET_PER_REFRESH = 10;
 const THROTTLE_KEY = "hive-private-last-refresh";
 const THROTTLE_MS = 6 * 60 * 60 * 1000;
@@ -271,7 +322,20 @@ export async function refreshPrivatePages(force = false): Promise<void> {
   try {
     localStorage.setItem(THROTTLE_KEY, String(Date.now()));
 
-    await ensureConfigPages();
+    const cfg = await loadConfig().catch(() => null);
+    const cfgIds: ConfigPageIds = {
+      scratchpadId: cfg?.scratchpad_page_id ? canonicalId(cfg.scratchpad_page_id) : null,
+      captureId: cfg?.capture_page_id ? canonicalId(cfg.capture_page_id) : null,
+    };
+
+    // Hive's own pages: classified unconditionally every refresh, outside
+    // the search budget below (they must always end up in the store once
+    // shared, regardless of what else is competing for the 10-item budget).
+    for (const id of [cfgIds.scratchpadId, cfgIds.captureId]) {
+      if (!id) continue;
+      if (await isClassified(id)) continue;
+      await classifyAndStore(id, "", cfgIds);
+    }
 
     const candidates = new Map<string, string>(); // id -> title
     for (const query of SEARCH_QUERIES) {
@@ -288,7 +352,7 @@ export async function refreshPrivatePages(force = false): Promise<void> {
         for (const r of parsed.results ?? []) {
           if (!r.id) continue;
           const id = canonicalId(r.id);
-          if (!candidates.has(id)) candidates.set(id, r.title || "Untitled");
+          if (!candidates.has(id)) candidates.set(id, r.title || "");
         }
       } catch {
         /* one query failing shouldn't block the others */
@@ -300,7 +364,7 @@ export async function refreshPrivatePages(force = false): Promise<void> {
       if (budget <= 0) break;
       if (await isClassified(id)) continue;
       budget -= 1;
-      await classifyAndStore(id, title);
+      await classifyAndStore(id, title, cfgIds);
     }
   } catch {
     /* fully silent */

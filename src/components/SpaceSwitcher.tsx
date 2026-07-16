@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useAppStore } from "../store/appStore";
+import { useAppStore, PRIVATE_SPACE_ID } from "../store/appStore";
 import { EmojiPicker } from "./EmojiPicker";
 import { Glyph } from "../lib/iconSets";
 import { SPACE_ACCENTS } from "../lib/orgDb";
@@ -109,18 +109,26 @@ export function SpaceSwitcher() {
         <SpaceEditor space={editing} onClose={() => setEditingId(null)} />
       )}
       <div className="hive-space-row">
-        {spaces.map((space, i) => (
+        {spaces.map((space, i) => {
+          const isPrivate = space.id === PRIVATE_SPACE_ID;
+          return (
           <span className="hive-space-dot-wrap" key={space.id}>
             <button
               className={`hive-space-dot accent-${space.color}${
                 space.id === activeSpaceId ? " active" : ""
               }${space.icon ? " has-emoji" : ""}`}
-              title={`${space.name} (⌃${i + 1}) — right-click to edit`}
+              title={
+                isPrivate
+                  ? `${space.name} (⌃${i + 1})`
+                  : `${space.name} (⌃${i + 1}) — right-click to edit`
+              }
               onClick={() => void switchSpace(space.id)}
-              onDoubleClick={() => setEditingId(space.id)}
+              onDoubleClick={() => {
+                if (!isPrivate) setEditingId(space.id);
+              }}
               onContextMenu={(e) => {
                 e.preventDefault();
-                setEditingId(space.id);
+                if (!isPrivate) setEditingId(space.id);
               }}
             >
               {space.icon ? (
@@ -135,7 +143,8 @@ export function SpaceSwitcher() {
               </span>
             )}
           </span>
-        ))}
+          );
+        })}
         <button
           className="hive-space-dot add"
           title="New Space"

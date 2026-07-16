@@ -143,7 +143,7 @@ function useActions(): Result[] {
     );
   }
   const crumbs = useAppStore((s) => s.breadcrumbs);
-  if (realPage && crumbs.length > 0) {
+  if (realPage && crumbs.length > 0 && useAppStore.getState().activeSpaceId !== "__private__") {
     const root = crumbs[0];
     actions.push(
       action(`Always route docs under “${root.title.slice(0, 24)}” to this Space`, "🛫", () => {

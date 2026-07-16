@@ -177,7 +177,7 @@ export function PageMenu({ onClose }: { onClose: () => void }) {
       )}
       <div className="sep" />
       {spaces
-        .filter((sp) => sp.id !== activeSpaceId)
+        .filter((sp) => sp.id !== activeSpaceId && sp.id !== "__private__")
         .slice(0, 4)
         .map((sp) =>
           // ph:/URL icons can't interpolate into a text label — emoji only

@@ -36,6 +36,27 @@ export type ViewMode = "native" | "embed";
 
 const ACTIVE_SPACE_KEY = "hive-active-space";
 
+/**
+ * Virtual "Private" Space (feature A rebuild): a dedicated Space-switcher
+ * entry for the user's auto-discovered private Notion pages (see
+ * lib/privatePages.ts), rather than a section stacked above Pinned in every
+ * real Space. NEVER persisted to orgDb — appended to the `spaces` array in
+ * memory only, always last, wherever spaces are loaded/created. Every org
+ * mutation that takes a Space id must treat this one as inert: see the
+ * guards in updateSpace, setItemTier, createFolder, filePageIntoFolder,
+ * moveItemToSpace, movePageToSpace, and the ATC/touchToday guards in
+ * recordOpen below.
+ */
+export const PRIVATE_SPACE_ID = "__private__";
+const PRIVATE_SPACE: Space = {
+  id: PRIVATE_SPACE_ID,
+  name: "Private",
+  color: "purple",
+  icon: "🔒",
+  sortOrder: Number.MAX_SAFE_INTEGER,
+  createdAt: "",
+};
+
 let peekOpenTimer: ReturnType<typeof setTimeout>;
 let peekCloseTimer: ReturnType<typeof setTimeout>;
 let navSeq = 0;
@@ -558,8 +579,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     // Reader text-size preference — reapply on real boot too (module load
     // already covers the pre-init/preview render).
     applyTextScale(get().textScale);
-    // Organization plane boots regardless of Notion auth.
-    const spaces = await org.ensureDefaultSpace();
+    // Organization plane boots regardless of Notion auth. The virtual
+    // Private space is appended in memory only — never written to orgDb —
+    // and always last, so it lands after every real Space in the switcher.
+    const realSpaces = await org.ensureDefaultSpace();
+    const spaces = [...realSpaces, PRIVATE_SPACE];
     const savedId = localStorage.getItem(ACTIVE_SPACE_KEY);
     const active = spaces.find((s) => s.id === savedId) ?? spaces[0];
     applySpaceAccent(active);
@@ -797,7 +821,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     ) {
       void get().loadComments();
     }
-    await org.touchToday(activeSpaceId, pageId, title, icon);
+    // The virtual Private space is never a real org-mutation target — a
+    // page opened while browsing it must not get filed as a "today" item
+    // with spaceId "__private__" (it would then be stranded: no Space's
+    // Pinned/Today ever matches that id, and the Private space itself only
+    // renders lib/privatePages.ts's discovered tree, not org sidebar items).
+    if (activeSpaceId !== PRIVATE_SPACE_ID) {
+      await org.touchToday(activeSpaceId, pageId, title, icon);
+    }
     try {
       await recordHit(pageId, title, icon);
     } catch {
@@ -815,7 +846,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         // ATC: route the doc's sidebar entry to its rule's Space
         const { matchRule } = await import("../lib/atc");
         const rule = matchRule(crumbs.map((c) => c.pageId));
-        if (rule && rule.spaceId !== get().activeSpaceId) {
+        // Never let a stray ATC rule (however it got saved) route a doc
+        // into the virtual Private space — same stranding hazard as above.
+        if (rule && rule.spaceId !== PRIVATE_SPACE_ID && rule.spaceId !== get().activeSpaceId) {
           const item = get().sidebarItems.find(
             (i) => i.notionPageId === pageId && i.tier === "today",
           );
@@ -935,13 +968,22 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   createSpace: async () => {
     const { spaces } = get();
-    const color = org.SPACE_ACCENTS[spaces.length % org.SPACE_ACCENTS.length];
-    const space = await org.createSpace(`Space ${spaces.length + 1}`, color);
-    set({ spaces: [...spaces, space] });
+    // Count/insert against REAL spaces only — the virtual Private entry
+    // must stay last, not get pushed down by every new Space.
+    const real = spaces.filter((s) => s.id !== PRIVATE_SPACE_ID);
+    const virtual = spaces.find((s) => s.id === PRIVATE_SPACE_ID);
+    const color = org.SPACE_ACCENTS[real.length % org.SPACE_ACCENTS.length];
+    const space = await org.createSpace(`Space ${real.length + 1}`, color);
+    set({ spaces: virtual ? [...real, space, virtual] : [...real, space] });
     await get().switchSpace(space.id);
   },
 
   updateSpace: async (spaceId, patch) => {
+    // The virtual Private space isn't in orgDb — renaming/recoloring/
+    // re-iconing it is a no-op (SpaceSwitcher/SpaceName also skip offering
+    // the editor UI for it, but guard here too since this is the one choke
+    // point every caller funnels through).
+    if (spaceId === PRIVATE_SPACE_ID) return;
     const clean = { ...patch };
     if (clean.name !== undefined) {
       clean.name = clean.name.trim();
@@ -963,7 +1005,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setItemTier: async (itemId: string, tier: Tier) => {
     const { activeSpaceId } = get();
-    if (!activeSpaceId) return;
+    // Demoting out of favorite assigns the item to activeSpaceId — never
+    // the virtual Private space (there's no real Space for it to land in).
+    if (!activeSpaceId || activeSpaceId === PRIVATE_SPACE_ID) return;
     await org.setTier(itemId, tier, activeSpaceId);
     await get().refreshSidebar();
   },
@@ -992,7 +1036,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   createFolder: async () => {
     const { activeSpaceId, folders } = get();
-    if (!activeSpaceId) return;
+    // Folders belong to a real Space; the Private space's own UI doesn't
+    // even show the control, but guard the mutation itself too.
+    if (!activeSpaceId || activeSpaceId === PRIVATE_SPACE_ID) return;
     await org.createFolder(activeSpaceId, `Folder ${folders.length + 1}`);
     await get().refreshSidebar();
   },
@@ -1012,7 +1058,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   /** Pin the current page and file it into a folder — the no-drag path. */
   filePageIntoFolder: async (folderId: string) => {
     const { pageId, sidebarItems, activeSpaceId } = get();
-    if (!pageId || pageId === DEMO_PAGE_ID || !activeSpaceId) return;
+    if (
+      !pageId || pageId === DEMO_PAGE_ID ||
+      !activeSpaceId || activeSpaceId === PRIVATE_SPACE_ID
+    ) return;
     let item = sidebarItems.find((i) => i.notionPageId === pageId);
     if (!item) {
       const { page } = get();
@@ -1036,6 +1085,9 @@ export const useAppStore = create<AppState>((set, get) => ({
    * (spaceId null), so moving one into a Space would otherwise be a no-op —
    * demote it to "pinned" in the same write so the move is visible. */
   moveItemToSpace: async (itemId: string, spaceId: string) => {
+    // Sidebar's ItemContextMenu already excludes Private from its Move-to
+    // list; guard the mutation itself too against any other caller.
+    if (spaceId === PRIVATE_SPACE_ID) return;
     const item = get().sidebarItems.find((i) => i.id === itemId);
     if (!item) return;
     await org.updateItem(itemId, {
@@ -1589,6 +1641,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   movePageToSpace: async (pageId: string, spaceId: string) => {
+    // PageMenu's "Move to Space" list isn't a file this rebuild may touch —
+    // guard the store side so a stray "Move to Private" click there (or
+    // from anywhere else) can't strand a doc with spaceId "__private__".
+    if (spaceId === PRIVATE_SPACE_ID) return;
     const existing = get().sidebarItems.find((i) => i.notionPageId === pageId);
     if (existing) {
       await org.updateItem(existing.id, { spaceId });
