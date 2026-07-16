@@ -7,6 +7,13 @@ import { SpaceSwitcher } from "./SpaceSwitcher";
 import type { SidebarItem, Tier } from "../lib/orgDb";
 import { subscribeReminders, dueReminders } from "../lib/reminders";
 import { dlog } from "../lib/debugLog";
+import { childPagesOf, hasChildPages } from "../lib/childPages";
+import {
+  listPrivatePages,
+  refreshPrivatePages,
+  subscribePrivate,
+  type PrivatePageEntry,
+} from "../lib/privatePages";
 
 /**
  * Per-Space sidebar: Favorites (icon row, transcend Spaces), Pinned,
@@ -50,6 +57,172 @@ function getDraggedItemId(e: React.DragEvent): string {
 // payload for engines whose dataTransfer is unreliable (see above).
 let isDragging = false;
 let draggedItemId: string | null = null;
+
+/**
+ * Expand/collapse page trees (feature B): which page ids currently show
+ * their children, persisted across restarts. Module-level (not per-row
+ * state) because a row's expanded state must survive that row unmounting
+ * and remounting (e.g. a re-sorted list, or the same page appearing under
+ * both the Private section and a Pinned tree).
+ */
+const EXPANDED_KEY = "hive-expanded-pages";
+
+function loadExpandedPages(): Set<string> {
+  try {
+    const raw = localStorage.getItem(EXPANDED_KEY);
+    return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+const expandedPages = loadExpandedPages();
+
+function persistExpandedPages(): void {
+  try {
+    localStorage.setItem(EXPANDED_KEY, JSON.stringify([...expandedPages]));
+  } catch {
+    /* best-effort */
+  }
+}
+
+function setExpandedPage(id: string, expanded: boolean): void {
+  if (expanded) expandedPages.add(id);
+  else expandedPages.delete(id);
+  persistExpandedPages();
+}
+
+const MAX_TREE_DEPTH = 4;
+
+/** Cache-only, cheap — safe to call from every row on mount. */
+function useHasChildren(pageId: string): boolean {
+  const [has, setHas] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void hasChildPages(pageId).then((v) => {
+      if (alive) setHas(v);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [pageId]);
+  return has;
+}
+
+/** Disclosure chevron left of a row's icon. A placeholder (no button) when
+ * the page has no children keeps every row's icon aligned. stopPropagation
+ * so toggling never opens the page or (for ItemRow) starts a drag. */
+function TreeChevron({
+  hasChildren,
+  expanded,
+  onToggle,
+}: {
+  hasChildren: boolean;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  if (!hasChildren) return <span className="hive-tree-chevron placeholder" />;
+  return (
+    <button
+      type="button"
+      className={`hive-tree-chevron${expanded ? " expanded" : ""}`}
+      draggable={false}
+      title={expanded ? "Collapse" : "Expand"}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      ▸
+    </button>
+  );
+}
+
+/** A page's children, indented one step. Re-fetched (from the local cache
+ * only — see childPages.ts) every time the row is expanded, not watched
+ * live. Recurses through PageTreeRow so grandchildren get their own
+ * chevron, up to MAX_TREE_DEPTH. */
+function PageTreeChildren({ pageId, depth }: { pageId: string; depth: number }) {
+  const [children, setChildren] = useState<
+    { id: string; title: string; icon: string | null }[] | null
+  >(null);
+
+  useEffect(() => {
+    let alive = true;
+    void childPagesOf(pageId).then((c) => {
+      if (alive) setChildren(c);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [pageId]);
+
+  if (!children || children.length === 0) return null;
+  return (
+    <>
+      {children.map((child) => (
+        <PageTreeRow key={child.id} id={child.id} title={child.title} icon={child.icon} depth={depth} />
+      ))}
+    </>
+  );
+}
+
+/** A single row in an expandable page tree — used for every Private-section
+ * row (depth 0) and for every child revealed under an expanded row (depth
+ * 1+, from either the Private section or a Pinned/Today ItemRow). Not a
+ * SidebarItem: no drag, no tier context menu — just icon, title, and its
+ * own disclosure chevron. */
+function PageTreeRow({
+  id,
+  title,
+  icon,
+  depth,
+}: {
+  id: string;
+  title: string;
+  icon: string | null;
+  depth: number;
+}) {
+  const openPage = useAppStore((s) => s.openPage);
+  const currentPageId = useAppStore((s) => s.pageId);
+  const hasChildren = useHasChildren(id);
+  const [expanded, setExpanded] = useState(() => expandedPages.has(id));
+  const active = currentPageId === id;
+
+  // Depth 0 (Private-section rows) reuse .hive-side-row for full parity with
+  // the rest of the sidebar. Depth 1+ (revealed by expanding ANY row) use a
+  // distinct .hive-tree-row class instead of .hive-side-row — TierList's
+  // drag-reorder math scans ".hive-side-row" to compute drop indices, and an
+  // expanded ItemRow's children must not be counted as tier siblings.
+  const rowClass = depth === 0 ? "hive-side-row" : "hive-tree-row";
+
+  return (
+    <>
+      <div
+        className={`${rowClass}${active ? " active" : ""}`}
+        style={{ paddingLeft: 8 + Math.min(depth, MAX_TREE_DEPTH) * 14 }}
+        onClick={() => void openPage(id)}
+        title={title}
+      >
+        <TreeChevron
+          hasChildren={hasChildren}
+          expanded={expanded}
+          onToggle={() => {
+            const next = !expanded;
+            setExpanded(next);
+            setExpandedPage(id, next);
+          }}
+        />
+        <span className="icon">{icon ? <Glyph icon={icon} /> : "📄"}</span>
+        <span className="title">{title}</span>
+      </div>
+      {expanded && hasChildren && depth < MAX_TREE_DEPTH && (
+        <PageTreeChildren pageId={id} depth={depth + 1} />
+      )}
+    </>
+  );
+}
 
 /** Right-click menu for a sidebar row: move Space/folder, pin/star toggles,
  * remove. Portals to <body> — WebKit clips absolutely-positioned
@@ -236,8 +409,11 @@ function ItemRow({ item }: { item: SidebarItem }) {
   const closePeek = useAppStore((s) => s.closePeek);
   const active = currentPageId === item.notionPageId;
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const hasChildren = useHasChildren(item.notionPageId);
+  const [expanded, setExpanded] = useState(() => expandedPages.has(item.notionPageId));
 
   return (
+    <>
     <div
       className={`hive-side-row${active ? " active" : ""}`}
       draggable
@@ -273,6 +449,15 @@ function ItemRow({ item }: { item: SidebarItem }) {
       onMouseLeave={releasePeek}
       title={item.titleCache}
     >
+      <TreeChevron
+        hasChildren={hasChildren}
+        expanded={expanded}
+        onToggle={() => {
+          const next = !expanded;
+          setExpanded(next);
+          setExpandedPage(item.notionPageId, next);
+        }}
+      />
       <span className="icon">{item.iconCache ? <Glyph icon={item.iconCache} /> : "📄"}</span>
       <span className="title">{item.titleCache}</span>
       {unread && <span className="hive-unread-dot" title="Changed since you last opened it" />}
@@ -301,6 +486,10 @@ function ItemRow({ item }: { item: SidebarItem }) {
       </span>
       {menu && <ItemContextMenu item={item} point={menu} onClose={() => setMenu(null)} />}
     </div>
+    {expanded && hasChildren && (
+      <PageTreeChildren pageId={item.notionPageId} depth={1} />
+    )}
+    </>
   );
 }
 
@@ -597,6 +786,97 @@ function InboxBell() {
   );
 }
 
+const PRIVATE_COLLAPSED_KEY = "hive-private-collapsed";
+
+/** Notion-parity "Private" section (feature A): the user's private pages,
+ * discovered automatically — no manual pinning. Sits above Pinned in every
+ * Space, since private pages aren't Space-scoped. */
+function PrivateSection() {
+  const mcpStatus = useAppStore((s) => s.mcpStatus);
+  const [pages, setPages] = useState<PrivatePageEntry[]>([]);
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(PRIVATE_COLLAPSED_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    const load = () => {
+      void listPrivatePages().then((p) => {
+        if (alive) setPages(p);
+      });
+    };
+    load();
+    const unsub = subscribePrivate(load);
+    // Lazy background refresh — internally throttled to once per 6h, so
+    // this is a cheap no-op most mounts.
+    const kick = setTimeout(() => void refreshPrivatePages(), 500);
+    return () => {
+      alive = false;
+      unsub();
+      clearTimeout(kick);
+    };
+  }, []);
+
+  const toggleCollapsed = () => {
+    const next = !collapsed;
+    setCollapsed(next);
+    try {
+      localStorage.setItem(PRIVATE_COLLAPSED_KEY, next ? "1" : "0");
+    } catch {
+      /* best-effort */
+    }
+  };
+
+  const onRefreshClick = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await refreshPrivatePages(true); // force — ignore the 6h throttle
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  return (
+    <div className="hive-side-section">
+      <div className="hive-side-heading hive-side-heading-collapsible" onClick={toggleCollapsed}>
+        <span>
+          <span className="chevron">{collapsed ? "▸" : "▾"}</span>
+          Private
+        </span>
+        <button
+          className={`hive-side-heading-action${refreshing ? " spinning" : ""}`}
+          title="Refresh private pages"
+          onClick={(e) => void onRefreshClick(e)}
+        >
+          <ArrowClockwise size={11} weight="bold" />
+        </button>
+      </div>
+      {!collapsed && (
+        <div className="hive-tier-list">
+          {pages.length === 0 ? (
+            <div className="hive-side-empty">
+              {mcpStatus !== "connected"
+                ? "Connect personal Notion to see your private pages"
+                : "Nothing discovered yet — ↻"}
+            </div>
+          ) : (
+            pages.map((p) => (
+              <PageTreeRow key={p.id} id={p.id} title={p.title} icon={p.icon} depth={0} />
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Sidebar() {
   const sidebarItems = useAppStore((s) => s.sidebarItems);
   const folders = useAppStore((s) => s.folders);
@@ -675,6 +955,8 @@ export function Sidebar() {
           ))}
         </div>
       )}
+
+      <PrivateSection />
 
       <div className="hive-side-section">
         <div className="hive-side-heading">

@@ -1384,6 +1384,94 @@ ol > .hive-toprow > .hive-block-handle {
   padding-left: 14px;
 }
 
+/* ---- Private section (feature A) ---- */
+
+.hive-side-heading-collapsible {
+  cursor: pointer;
+}
+.hive-side-heading-collapsible .chevron {
+  display: inline-block;
+  width: 0.9em;
+  font-size: 0.85em;
+  color: var(--hive-color-fg-muted);
+}
+.hive-side-heading-action.spinning svg {
+  animation: hive-spin 0.8s linear infinite;
+}
+@keyframes hive-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---- Page trees: expand/collapse chevrons + indented children (feature B) ---- */
+
+.hive-tree-chevron {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  padding: 0;
+  margin-right: 1px;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--hive-color-fg-muted);
+  cursor: pointer;
+  transition: transform 0.12s ease-in-out, color 0.12s ease-in-out;
+}
+.hive-tree-chevron:hover {
+  color: var(--hive-color-accent);
+}
+.hive-tree-chevron.expanded {
+  transform: rotate(90deg);
+}
+.hive-tree-chevron.placeholder {
+  cursor: default;
+}
+
+/* Depth 1+ rows revealed by expanding a tree — same look as .hive-side-row
+   (icon/title layout, hover, active) but a distinct class so TierList's
+   drag-reorder math (which scans .hive-side-row) never counts them as tier
+   siblings. */
+.hive-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--hive-color-fg-secondary);
+  user-select: none;
+  transition: background-color 0.12s ease-in-out;
+}
+.hive-tree-row:hover {
+  background: var(--hive-color-bg-surface);
+}
+.hive-tree-row.active {
+  background: var(--hive-color-accent-subtle);
+  color: var(--hive-color-accent);
+  font-weight: 500;
+}
+.hive-tree-row .icon {
+  flex-shrink: 0;
+  width: 1.1em;
+  text-align: center;
+}
+.hive-tree-row .title {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ---- Command bar ---- */
 
 .hive-cmdbar-backdrop {
