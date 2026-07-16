@@ -26,6 +26,7 @@ import * as org from "../lib/orgDb";
 import * as mcp from "../lib/notionMcp";
 import type { CommentThread } from "../lib/notionMcp";
 import * as writeback from "../lib/writeback";
+import { dlog } from "../lib/debugLog";
 import type { Folder, SidebarItem, Space, Tier } from "../lib/orgDb";
 import type { HiveBlock, PageData, RichTextItem } from "../lib/types";
 
@@ -1602,6 +1603,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   createPage: async (parentId: string | null) => {
+    dlog(`createPage entry parent=${parentId?.slice(-8) ?? "null"} auth=${get().auth.status}`);
     if (get().auth.status !== "ready") {
       get().showToast("Creating pages needs the Notion token");
       return;
@@ -1623,6 +1625,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         ),
       ];
     }
+    dlog(`createPage candidates=[${candidates.map((c) => c.slice(-8)).join(",")}]`);
     let lastError: unknown = null;
     for (const parent of candidates) {
       try {
@@ -1632,10 +1635,12 @@ export const useAppStore = create<AppState>((set, get) => ({
             properties: { title: { title: [{ text: { content: "Untitled" } }] } },
           }),
         )) as { id: string };
+        dlog(`createPage created=..${created.id.slice(-8)} under=..${parent.slice(-8)}`);
         await get().openPage(created.id);
         get().showToast("Page created — click the title to name it");
         return;
       } catch (err) {
+        dlog(`createPage FAILED under=..${parent.slice(-8)}: ${err instanceof Error ? err.message.slice(0, 80) : err}`);
         lastError = err;
       }
     }

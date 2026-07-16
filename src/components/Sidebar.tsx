@@ -601,7 +601,6 @@ export function Sidebar() {
   const sidebarItems = useAppStore((s) => s.sidebarItems);
   const folders = useAppStore((s) => s.folders);
   const createFolder = useAppStore((s) => s.createFolder);
-  const createPage = useAppStore((s) => s.createPage);
   const spaces = useAppStore((s) => s.spaces);
   const activeSpaceId = useAppStore((s) => s.activeSpaceId);
   const onWheel = useSwipeToSwitch();
@@ -658,8 +657,12 @@ export function Sidebar() {
         <InboxBell />
         <button
           className="hive-newpage-btn"
-          title="New page (in your scratchpad)"
-          onClick={() => void createPage(null)}
+          title="New page (sub-page of the open doc, or your scratchpad)"
+          onClick={() => {
+            const s = useAppStore.getState();
+            dlog(`pencil-click page=${s.pageId?.slice(-8) ?? "none"} auth=${s.auth.status}`);
+            void s.createPage(s.pageId ?? null);
+          }}
         >
           <PencilSimpleLine size={15} weight="bold" />
         </button>
