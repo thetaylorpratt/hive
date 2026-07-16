@@ -1,4 +1,5 @@
 import Database from "@tauri-apps/plugin-sql";
+import { dlog } from "./debugLog";
 import { callTool, mcpConnected } from "./notionMcp";
 import { normalizePageId } from "./fetchPage";
 import { loadConfig } from "./config";
@@ -247,7 +248,10 @@ async function fetchMeta(id: string): Promise<FetchMeta | null> {
   try {
     const raw = await callTool("notion-fetch", { id });
     return parseFetchMeta(unwrapToolText(raw));
-  } catch {
+  } catch (err) {
+    dlog(
+      `PRIV fetchMeta ..${id.slice(-8)} THREW: ${err instanceof Error ? err.message.slice(0, 80) : err}`,
+    );
     return null;
   }
 }
@@ -280,15 +284,25 @@ async function classifyAndStore(
   cfg: ConfigPageIds,
 ): Promise<void> {
   const meta = await fetchMeta(id);
-  if (!meta || !meta.ancestorEligible) return; // factor (a) failed
+  if (!meta || !meta.ancestorEligible) {
+    dlog(`PRIV classify ..${id.slice(-8)} REJECT factor-a meta=${meta ? "hasAncestors" : "null"}`);
+    return;
+  }
 
   const isConfigPage = id === cfg.scratchpadId || id === cfg.captureId;
   const factorB = isConfigPage || !(await isReadableByBot(id));
-  if (!factorB) return; // bot can read it, and it isn't an explicit override
+  if (!factorB) {
+    dlog(`PRIV classify ..${id.slice(-8)} REJECT factor-b (bot-readable, not config)`);
+    return;
+  }
 
   const title = (meta.title || knownTitle || "").trim();
-  if (!title) return; // no real title anywhere — skip rather than store junk
+  if (!title) {
+    dlog(`PRIV classify ..${id.slice(-8)} REJECT no-title`);
+    return;
+  }
 
+  dlog(`PRIV classify ..${id.slice(-8)} PRIVATE "${title.slice(0, 30)}"`);
   await upsertPrivate(id, title, transformFetchIcon(meta.icon));
 }
 
@@ -304,7 +318,10 @@ let refreshing = false;
  * blocking or user-facing error path. Pass force=true to bypass the 6h
  * throttle (the sidebar's manual ↻ button). */
 export async function refreshPrivatePages(force = false): Promise<void> {
-  if (refreshing) return;
+  if (refreshing) {
+    dlog("PRIV refresh SKIP: already running");
+    return;
+  }
   if (!force) {
     const last = Number(localStorage.getItem(THROTTLE_KEY) ?? "0");
     if (Date.now() - last < THROTTLE_MS) return;
@@ -316,6 +333,7 @@ export async function refreshPrivatePages(force = false): Promise<void> {
   } catch {
     connected = false;
   }
+  dlog(`PRIV refresh start force=${force} connected=${connected}`);
   if (!connected) return;
 
   refreshing = true;
@@ -359,6 +377,7 @@ export async function refreshPrivatePages(force = false): Promise<void> {
       }
     }
 
+    dlog(`PRIV refresh cfg=[${cfgIds.scratchpadId?.slice(-8) ?? "-"},${cfgIds.captureId?.slice(-8) ?? "-"}] candidates=${candidates.size}`);
     let budget = CLASSIFY_BUDGET_PER_REFRESH;
     for (const [id, title] of candidates) {
       if (budget <= 0) break;
@@ -366,8 +385,9 @@ export async function refreshPrivatePages(force = false): Promise<void> {
       budget -= 1;
       await classifyAndStore(id, title, cfgIds);
     }
-  } catch {
-    /* fully silent */
+    dlog(`PRIV refresh done, budget left=${budget}`);
+  } catch (err) {
+    dlog(`PRIV refresh THREW: ${err instanceof Error ? err.message.slice(0, 100) : err}`);
   } finally {
     refreshing = false;
     notifySubscribers();

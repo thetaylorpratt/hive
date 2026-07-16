@@ -821,13 +821,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     ) {
       void get().loadComments();
     }
-    // The virtual Private space is never a real org-mutation target — a
-    // page opened while browsing it must not get filed as a "today" item
-    // with spaceId "__private__" (it would then be stranded: no Space's
-    // Pinned/Today ever matches that id, and the Private space itself only
-    // renders lib/privatePages.ts's discovered tree, not org sidebar items).
-    if (activeSpaceId !== PRIVATE_SPACE_ID) {
-      await org.touchToday(activeSpaceId, pageId, title, icon);
+    // The virtual Private space is never a real org-mutation target — but a
+    // page opened while browsing it (via search, links, the private tree)
+    // still deserves a Today entry, else it's unreachable from any sidebar
+    // and can't be pinned/filed at all. File it into the last REAL space.
+    const todaySpace =
+      activeSpaceId !== PRIVATE_SPACE_ID
+        ? activeSpaceId
+        : get().spaces.find((s) => s.id !== PRIVATE_SPACE_ID)?.id ?? null;
+    if (todaySpace) {
+      await org.touchToday(todaySpace, pageId, title, icon);
     }
     try {
       await recordHit(pageId, title, icon);
