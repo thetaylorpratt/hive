@@ -59,6 +59,13 @@ async function ensureTable(db: Database): Promise<void> {
        classified_at TEXT
      )`,
   );
+  await db.execute(
+    `CREATE TABLE IF NOT EXISTS private_probe (
+       notion_page_id TEXT PRIMARY KEY,
+       verdict TEXT,
+       classified_at TEXT
+     )`,
+  );
   tableEnsured = true;
 }
 
@@ -103,16 +110,50 @@ function canonicalId(pageId: string): string {
   return normalizePageId(pageId) ?? pageId;
 }
 
+/* NEGATIVE classifications must be remembered too: without this, every
+ * refresh burned its whole budget re-probing the same top-ranked (team)
+ * search results, and discovery never advanced past them. */
+const PROBE_TABLE = "private_probe";
+const LS_PROBE_KEY = "hive-private-probe-fallback";
+
+async function recordVerdict(id: string, verdict: "private" | "not-private"): Promise<void> {
+  try {
+    const db = await getDb();
+    await ensureTable(db);
+    await db.execute(
+      `INSERT INTO ${PROBE_TABLE} (notion_page_id, verdict, classified_at)
+       VALUES ($1, $2, $3)
+       ON CONFLICT(notion_page_id) DO UPDATE SET verdict = excluded.verdict, classified_at = excluded.classified_at`,
+      [id, verdict, new Date().toISOString()],
+    );
+  } catch {
+    try {
+      const map = JSON.parse(localStorage.getItem(LS_PROBE_KEY) ?? "{}") as Record<string, string>;
+      map[id] = verdict;
+      localStorage.setItem(LS_PROBE_KEY, JSON.stringify(map));
+    } catch {
+      /* best-effort */
+    }
+  }
+}
+
 async function isClassified(id: string): Promise<boolean> {
   try {
     const db = await getDb();
     await ensureTable(db);
     const rows = await db.select<{ n: number }[]>(
-      `SELECT 1 AS n FROM ${TABLE} WHERE notion_page_id = $1 LIMIT 1`,
+      `SELECT 1 AS n FROM ${PROBE_TABLE} WHERE notion_page_id = $1
+       UNION SELECT 1 FROM ${TABLE} WHERE notion_page_id = $1 LIMIT 1`,
       [id],
     );
     return rows.length > 0;
   } catch {
+    try {
+      const probes = JSON.parse(localStorage.getItem(LS_PROBE_KEY) ?? "{}") as Record<string, string>;
+      if (id in probes) return true;
+    } catch {
+      /* fall through */
+    }
     return id in lsRead();
   }
 }
@@ -247,7 +288,19 @@ function parseFetchMeta(xml: string): FetchMeta {
 async function fetchMeta(id: string): Promise<FetchMeta | null> {
   try {
     const raw = await callTool("notion-fetch", { id });
-    return parseFetchMeta(unwrapToolText(raw));
+    const meta = parseFetchMeta(unwrapToolText(raw));
+    // The page TITLE lives in the JSON envelope, not the XML (<page> has
+    // url/icon attrs only) — unwrapping discarded it, which made even
+    // Scratchpad die at the no-title check.
+    if (!meta.title) {
+      try {
+        const envelope = JSON.parse(raw) as { title?: string };
+        if (typeof envelope.title === "string") meta.title = envelope.title;
+      } catch {
+        /* raw wasn't the JSON envelope — keep whatever the XML gave us */
+      }
+    }
+    return meta;
   } catch (err) {
     dlog(
       `PRIV fetchMeta ..${id.slice(-8)} THREW: ${err instanceof Error ? err.message.slice(0, 80) : err}`,
@@ -284,8 +337,14 @@ async function classifyAndStore(
   cfg: ConfigPageIds,
 ): Promise<void> {
   const meta = await fetchMeta(id);
-  if (!meta || !meta.ancestorEligible) {
-    dlog(`PRIV classify ..${id.slice(-8)} REJECT factor-a meta=${meta ? "hasAncestors" : "null"}`);
+  if (!meta) {
+    // Transient (network/session) — do NOT record a verdict; retry later.
+    dlog(`PRIV classify ..${id.slice(-8)} SKIP fetch-failed (will retry)`);
+    return;
+  }
+  if (!meta.ancestorEligible) {
+    dlog(`PRIV classify ..${id.slice(-8)} REJECT factor-a hasAncestors`);
+    await recordVerdict(id, "not-private");
     return;
   }
 
@@ -293,17 +352,18 @@ async function classifyAndStore(
   const factorB = isConfigPage || !(await isReadableByBot(id));
   if (!factorB) {
     dlog(`PRIV classify ..${id.slice(-8)} REJECT factor-b (bot-readable, not config)`);
+    await recordVerdict(id, "not-private");
     return;
   }
 
-  const title = (meta.title || knownTitle || "").trim();
-  if (!title) {
-    dlog(`PRIV classify ..${id.slice(-8)} REJECT no-title`);
-    return;
-  }
+  // Both factors passed — store even without a title ("Untitled" pages are
+  // legitimately private; the v0.10.0 junk came from misclassification,
+  // not untitled-ness).
+  const title = (meta.title || knownTitle || "").trim() || "Untitled";
 
   dlog(`PRIV classify ..${id.slice(-8)} PRIVATE "${title.slice(0, 30)}"`);
   await upsertPrivate(id, title, transformFetchIcon(meta.icon));
+  await recordVerdict(id, "private");
 }
 
 const SEARCH_QUERIES = ["notes", "plan", "draft", "meeting", "scratchpad"];
@@ -378,7 +438,8 @@ export async function refreshPrivatePages(force = false): Promise<void> {
     }
 
     dlog(`PRIV refresh cfg=[${cfgIds.scratchpadId?.slice(-8) ?? "-"},${cfgIds.captureId?.slice(-8) ?? "-"}] candidates=${candidates.size}`);
-    let budget = CLASSIFY_BUDGET_PER_REFRESH;
+    // Manual ↻ is explicit user intent — probe harder than background runs.
+    let budget = force ? 25 : CLASSIFY_BUDGET_PER_REFRESH;
     for (const [id, title] of candidates) {
       if (budget <= 0) break;
       if (await isClassified(id)) continue;
