@@ -1483,12 +1483,17 @@ export const useAppStore = create<AppState>((set, get) => ({
     await applyWrite(get, set, (pageId, blocks, sink) =>
       writeback.indentBlock(pageId, blocks, blockId, sink),
     );
+    // The recreate re-parents the block → React remounts it → focus dies,
+    // and the remap's DOM-focus check runs too late to notice. Re-request
+    // explicitly so the caret follows the block into its new nesting.
+    set({ focusBlockId: blockId });
   },
   outdentBlock: async (blockId) => {
     blockId = await settleId(blockId);
     await applyWrite(get, set, (pageId, blocks, sink) =>
       writeback.outdentBlock(pageId, blocks, blockId, sink),
     );
+    set({ focusBlockId: blockId });
   },
 
   recomputeUnread: async () => {

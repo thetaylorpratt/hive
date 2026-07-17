@@ -518,16 +518,26 @@ export function EditableText({
     if (focusBlockId === block.id && ref.current) {
       const el = ref.current;
       el.focus();
+      const sel = window.getSelection();
+      const range = document.createRange();
       if (el.childNodes.length > 0) {
-        const sel = window.getSelection();
-        const range = document.createRange();
         range.selectNodeContents(el);
         // Split-block Enter puts the caret at the START of the carried text
         // (consume-once flag); everything else keeps caret-to-end.
         range.collapse(useAppStore.getState().focusCaretStart);
-        sel?.removeAllRanges();
-        sel?.addRange(range);
+      } else {
+        // EMPTY block (fresh sub-bullet from Tab-indent's recreate, etc.):
+        // WKWebView can't hold a caret in a childless element. Use the
+        // click-fix's proven anchor — seed a <br> and set the caret at
+        // (el, 0). htmlToRichText ignores BR so commits stay clean. (The
+        // v0.8.5 ghost-line incident came from the selectNodeContents +
+        // collapse-after-BR variant, not from this setStart form.)
+        el.appendChild(document.createElement("br"));
+        range.setStart(el, 0);
+        range.collapse(true);
       }
+      sel?.removeAllRanges();
+      sel?.addRange(range);
       setFocusBlock(null);
     }
   }, [focusBlockId, block.id, setFocusBlock]);
